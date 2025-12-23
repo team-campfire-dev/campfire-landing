@@ -1,9 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import './App.css';
 import { projects } from './data/projects';
 
 function App() {
     const [selectedCategory, setSelectedCategory] = useState(null);
+
+    const particles = useMemo(() => {
+        return [...Array(80)].map(() => ({
+            left: Math.random() * 100,
+            delay: Math.random() * -10,
+            duration: 1.5 + Math.random() * 4,
+            size: 4 + Math.random() * 20,
+            sway: (Math.random() - 0.5) * 100
+        }));
+    }, []);
 
     const handleCategoryClick = (category) => {
         setSelectedCategory(category);
@@ -92,17 +102,21 @@ function App() {
             {/* Show Hero only when no category selected (or keep it if you want) - Let's keep smooth transition by hiding hero on detailed view for focus */}
             {!selectedCategory && (
                 <section className="hero-section">
-                    <div className="fire-glow">
-                        <div className="fire-particle p1"></div>
-                        <div className="fire-particle p2"></div>
-                        <div className="fire-particle p3"></div>
-                        <div className="fire-particle p4"></div>
-                        <div className="fire-particle p5"></div>
-                        <div className="fire-particle p6"></div>
-                        <div className="fire-particle p7"></div>
-                        <div className="fire-particle p8"></div>
-                        <div className="fire-particle p9"></div>
-                        <div className="fire-particle p10"></div>
+                    <div className="fire-glow"></div>
+                    <div className="fire-particles-container">
+                        {particles.map((p, i) => (
+                            <div
+                                key={i}
+                                className="fire-particle"
+                                style={{
+                                    '--left': `${p.left}%`,
+                                    '--delay': `${p.delay}s`,
+                                    '--duration': `${p.duration}s`,
+                                    '--size': `${p.size}px`,
+                                    '--sway': `${p.sway}px`
+                                }}
+                            ></div>
+                        ))}
                     </div>
                     <div className="hero-content">
                         <h1 className="hero-title">Team Campfire</h1>
