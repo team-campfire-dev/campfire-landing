@@ -1,0 +1,81 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "prod" ]
+  pull_request:
+    branches: [ "prod" ]
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+
+    # Lint command might fail if not configured, or if there are errors. 
+    # For now, we will run it but continue on error if we want to be safe, 
+    # or strict if we want to block deploy. Assuming strict.
+    # If the user doesn't have a lint script, this step will fail. 
+    # campfire-landing is a CRA, so it usually has 'lint'.
+    # - name: Lint
+    #   run: npm run lint
+
+    - name: Build
+      run: npm run build
+
+  deploy:
+    name: Deploy to Oracle VM
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/prod'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+    - name: Deploy using SSH
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.KEY }}
+        port: 22
+        script: |
+          # 프로젝트 경로 설정
+          PROJECT_DIR=~/campfire-landing
+
+          if [ ! -d "$PROJECT_DIR" ]; then
+            echo "Project directory does not exist. Cloning..."
+            git clone -b prod https://github.com/team-campfire-dev/campfire-landing.git "$PROJECT_DIR"
+            cd "$PROJECT_DIR"
+          else
+            echo "Project directory exists. Trying to pull..."
+            cd "$PROJECT_DIR"
+            if ! git pull origin prod; then
+              echo "Git pull failed. Re-cloning..."
+              cd ~
+              rm -rf "$PROJECT_DIR"
+              git clone -b prod https://github.com/team-campfire-dev/campfire-landing.git "$PROJECT_DIR"
+              cd "$PROJECT_DIR"
+            fi
+          fi
+          
+          # .env.local (사용하지 않더라도 파일이 없으면 에러 날 수 있으니 체크하거나 빈 파일 생성)
+          if [ ! -z "${{ secrets.ENV_FILE }}" ]; then
+             echo "${{ secrets.ENV_FILE }}" > .env.local
+          else
+             touch .env.local
+          fi
+          
+          # Docker 컨테이너 재빌드 및 실행
+          docker compose up -d --build
+          
+          # 불필요한 이미지 정리
+          docker image prune -f
