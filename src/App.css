@@ -44,16 +44,30 @@
 /* Fire Effect (Warm Rising Embers) */
 .fire-glow {
     position: absolute;
+    left: 50%;
+    top: 35%;
     width: 60vw;
     height: 60vw;
     background: radial-gradient(circle, rgba(255, 60, 0, 0.2) 0%, rgba(0, 0, 0, 0) 70%);
     border-radius: 50%;
-    animation: warm-breathe 6s infinite ease-in-out;
+    animation: warm-breathe 4s infinite ease-in-out;
     pointer-events: none;
     z-index: 1;
     display: flex;
     justify-content: center;
     align-items: center;
+    mix-blend-mode: screen;
+}
+
+.fire-particles-container {
+    position: absolute;
+    left: 50%;
+    top: 35%;
+    width: 60vw;
+    height: 60vw;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 1;
 }
 
 @keyframes warm-breathe {
@@ -61,107 +75,61 @@
     0%,
     100% {
         opacity: 0.5;
-        transform: scale(1);
+        transform: translate(-50%, -50%) scale(0.9);
+        background: radial-gradient(circle, rgba(255, 60, 0, 0.4) 0%, rgba(0, 0, 0, 0) 70%);
     }
 
     50% {
-        opacity: 0.7;
-        transform: scale(1.05);
+        opacity: 0.8;
+        transform: translate(-50%, -50%) scale(1.2);
+        background: radial-gradient(circle, rgba(255, 90, 0, 0.5) 0%, rgba(0, 0, 0, 0) 75%);
     }
 }
 
 .fire-particle {
     position: absolute;
+    bottom: 0px;
+    left: var(--left);
+    width: var(--size);
+    height: var(--size);
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(255, 140, 0, 0.8) 0%, rgba(255, 60, 0, 0) 70%);
+    background: radial-gradient(circle, rgba(255, 140, 0, 0.8) 0%, rgba(255, 69, 0, 0.4) 60%, rgba(255, 0, 0, 0) 100%);
     opacity: 0;
-    filter: blur(10px);
-    animation: rise 5s infinite ease-out;
-}
-
-.p1 {
-    width: 100px;
-    height: 100px;
-    left: 40%;
-    animation-delay: 0s;
-}
-
-.p2 {
-    width: 120px;
-    height: 120px;
-    left: 50%;
-    animation-delay: 1s;
-}
-
-.p3 {
-    width: 80px;
-    height: 80px;
-    left: 60%;
-    animation-delay: 2s;
-}
-
-.p4 {
-    width: 150px;
-    height: 150px;
-    left: 45%;
-    animation-delay: 3s;
-}
-
-.p5 {
-    width: 90px;
-    height: 90px;
-    left: 55%;
-    animation-delay: 4s;
-}
-
-.p6 {
-    width: 70px;
-    height: 70px;
-    left: 35%;
-    animation-delay: 0.5s;
-}
-
-.p7 {
-    width: 110px;
-    height: 110px;
-    left: 65%;
-    animation-delay: 1.5s;
-}
-
-.p8 {
-    width: 60px;
-    height: 60px;
-    left: 48%;
-    animation-delay: 2.5s;
-}
-
-.p9 {
-    width: 130px;
-    height: 130px;
-    left: 52%;
-    animation-delay: 3.5s;
-}
-
-.p10 {
-    width: 100px;
-    height: 100px;
-    left: 42%;
-    animation-delay: 4.5s;
+    filter: blur(5px);
+    animation: rise var(--duration) infinite ease-out;
+    animation-delay: var(--delay);
+    pointer-events: none;
+    mix-blend-mode: screen;
+    will-change: transform, opacity;
 }
 
 @keyframes rise {
     0% {
-        transform: translateY(20px) scale(0.8);
+        transform: translate(0, 40px) scale(0.3);
         opacity: 0;
+        filter: blur(5px);
     }
 
-    20% {
-        opacity: 0.6;
+    15% {
+        opacity: 0.9;
+        filter: blur(2px);
+        transform: translate(0, 0) scale(1);
+    }
+
+    50% {
+        opacity: 0.7;
+        transform: translate(calc(var(--sway) * 0.4), -80px) scale(1.2);
+    }
+    
+    75% {
+        opacity: 0.4;
+        transform: translate(calc(var(--sway) * 0.8), -150px) scale(0.8);
     }
 
     100% {
-        transform: translateY(-150px) scale(1.2);
+        transform: translate(var(--sway), -250px) scale(0);
         opacity: 0;
+        filter: blur(15px);
     }
 }
 
