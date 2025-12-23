@@ -12,9 +12,13 @@ export const projects = {
     game: [
         // Indigame projects will be added here
         {
-            name: '준비중',
-            description: '새로운 재미를 준비하고 있습니다.',
-            status: 'Coming Soon'
+            name: '무한의 기둥 - Infinity Column',
+            description: '전략과 순발력이 필요한 중독성 있는 블록 퍼즐 게임',
+            image: '/images/infinity-column.png',
+            appStore: 'https://apps.apple.com/us/app/infinity-column/id6743107597',
+            playStore: 'https://play.google.com/store/apps/details?id=com.TeamCampfire.InfinityColumn',
+            devLog: 'https://dbsckdqja75.tistory.com/category/Unity',
+            status: 'Live'
         }
     ]
 };
