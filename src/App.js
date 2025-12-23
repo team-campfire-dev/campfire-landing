@@ -26,21 +26,42 @@ function App() {
                     {categoryProjects.length > 0 ? (
                         categoryProjects.map((project, index) => (
                             <div key={index} className="project-card">
-                                <h3>{project.name}</h3>
-                                {project.image && <img src={project.image} alt={project.name} className="project-image" />}
-                                <p>{project.description}</p>
-                                <div>
-                                    {project.github && (
-                                        <a href={project.github} target="_blank" rel="noopener noreferrer" className="btn-link">
-                                            GitHub
-                                        </a>
-                                    )}
-                                    {project.demo && (
-                                        <a href={project.demo} target="_blank" rel="noopener noreferrer" className="btn-link">
-                                            Demo
-                                        </a>
-                                    )}
-                                    {project.status && <span style={{ color: '#666', fontSize: '0.9rem', marginLeft: '10px' }}>{project.status}</span>}
+                                {project.image && (
+                                    <div className="project-image-wrapper">
+                                        <img src={project.image} alt={project.name} className="project-image" />
+                                    </div>
+                                )}
+                                <div className="project-content">
+                                    <h3>{project.name}</h3>
+                                    <p>{project.description}</p>
+                                    <div className="project-links">
+                                        {project.github && (
+                                            <a href={project.github} target="_blank" rel="noopener noreferrer" className="btn-link">
+                                                GitHub
+                                            </a>
+                                        )}
+                                        {project.demo && (
+                                            <a href={project.demo} target="_blank" rel="noopener noreferrer" className="btn-link">
+                                                Demo
+                                            </a>
+                                        )}
+                                        {project.appStore && (
+                                            <a href={project.appStore} target="_blank" rel="noopener noreferrer" className="btn-link">
+                                                App Store
+                                            </a>
+                                        )}
+                                        {project.playStore && (
+                                            <a href={project.playStore} target="_blank" rel="noopener noreferrer" className="btn-link">
+                                                Google Play
+                                            </a>
+                                        )}
+                                        {project.devLog && (
+                                            <a href={project.devLog} target="_blank" rel="noopener noreferrer" className="btn-link">
+                                                Dev Log (Blog)
+                                            </a>
+                                        )}
+                                        {project.status && <span style={{ color: '#666', fontSize: '0.9rem', marginLeft: '10px' }}>{project.status}</span>}
+                                    </div>
                                 </div>
                             </div>
                         ))
@@ -57,6 +78,14 @@ function App() {
             </section>
         );
     };
+
+    const members = [
+        { name: 'zeratulspc', avatar: 'https://avatars.githubusercontent.com/u/48204767?v=4', url: 'https://github.com/zeratulspc' },
+        { name: 'BUILD', avatar: 'https://avatars.githubusercontent.com/u/22255667?v=4', url: 'https://github.com/dbsckdqja75' },
+        { name: 'ChanchanCode', avatar: 'https://avatars.githubusercontent.com/u/69672653?v=4', url: 'https://github.com/ChanchanCode' },
+        { name: 'hotdogun', avatar: 'https://avatars.githubusercontent.com/u/62146955?v=4', url: 'https://github.com/hotdogun' },
+        { name: 'Han', avatar: 'https://avatars.githubusercontent.com/u/49480867?v=4', url: 'https://github.com/DogYoJeong' },
+    ];
 
     return (
         <div className="App">
@@ -103,6 +132,18 @@ function App() {
                         <div className="card" onClick={() => handleCategoryClick('web')} style={{ cursor: 'pointer' }}>
                             <h3>🌐 웹 서비스</h3>
                             <p>사람과 사람을 잇는<br />새로운 소통의 공간</p>
+                        </div>
+                    </div>
+
+                    <div className="members-section">
+                        <h2>Members</h2>
+                        <div className="members-grid">
+                            {members.map((member, index) => (
+                                <a key={index} href={member.url} target="_blank" rel="noopener noreferrer" className="member-card">
+                                    <img src={member.avatar} alt={member.name} className="member-avatar" />
+                                    <span className="member-name">{member.name}</span>
+                                </a>
+                            ))}
                         </div>
                     </div>
                 </section>

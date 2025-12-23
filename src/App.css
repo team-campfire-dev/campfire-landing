@@ -208,6 +208,63 @@
     color: var(--accent-secondary);
 }
 
+/* Members Section */
+.members-section {
+    margin-top: 5rem;
+    text-align: center;
+}
+
+.members-section h2 {
+    font-size: 2rem;
+    margin-bottom: 2rem;
+    color: var(--text-color);
+}
+
+.members-grid {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 2rem;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.member-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    text-decoration: none;
+    transition: transform 0.3s ease;
+}
+
+.member-card:hover {
+    transform: translateY(-5px);
+}
+
+.member-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    transition: border-color 0.3s ease;
+}
+
+.member-card:hover .member-avatar {
+    border-color: var(--accent-primary);
+}
+
+.member-name {
+    color: #ccc;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: color 0.3s ease;
+}
+
+.member-card:hover .member-name {
+    color: var(--accent-primary);
+}
+
 /* Footer & Contact */
 .footer {
     margin-top: auto;
@@ -307,11 +364,37 @@
     border-left: 4px solid var(--accent-primary);
     text-align: left;
     transition: transform 0.2s ease;
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
 }
 
 .project-card:hover {
-    transform: translateX(10px);
+    transform: translateX(5px);
     background-color: rgba(255, 255, 255, 0.03);
+}
+
+.project-image-wrapper {
+    flex-shrink: 0;
+    width: 140px;
+    height: 140px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.project-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.project-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
 }
 
 .project-card h3 {
@@ -323,17 +406,59 @@
 .project-card p {
     color: #aaa;
     margin-bottom: 1rem;
+    line-height: 1.6;
+}
+
+.project-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    margin-top: auto;
+}
+
+@media (max-width: 768px) {
+    .project-links {
+        justify-content: center;
+    }
+
+    .project-card {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .project-image-wrapper {
+        width: 100%;
+        max-width: 250px;
+        aspect-ratio: 1/1;
+        margin-bottom: 1rem;
+    }
+
+    .project-content {
+        align-items: center;
+        width: 100%;
+    }
 }
 
 .btn-link {
     display: inline-block;
-    margin-right: 1rem;
     padding: 0.5rem 1rem;
-    border: 1px solid var(--accent-primary);
+    border: 2px solid var(--accent-primary);
+    color: var(--card-bg);
+    /* Text initially dark/bg color if we want contrast, or keep it standard */
+    background-color: var(--accent-primary);
+    /* Request didn't specify button style change, but let's keep it clean */
+    /* Reverting to previous outline style for consistency if preferred, or solid? */
+    /* Let's stick to the previous style but just remove margin-right since we use gap now */
+    background-color: transparent;
     color: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
+    margin: 0;
+    /* Handled by gap */
     border-radius: 4px;
     font-size: 0.9rem;
     transition: all 0.3s ease;
+    text-decoration: none;
 }
 
 .btn-link:hover {
@@ -356,14 +481,4 @@
 .btn-back:hover {
     border-color: var(--text-color);
     color: var(--text-color);
-}
-
-.project-image {
-    display: block;
-    max-width: 60%;
-    height: auto;
-    border-radius: 8px;
-    margin: 0 auto 1.5rem auto;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.1);
 }
