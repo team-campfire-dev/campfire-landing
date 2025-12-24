@@ -6,12 +6,14 @@ function App() {
     const [selectedCategory, setSelectedCategory] = useState(null);
 
     const particles = useMemo(() => {
-        return [...Array(80)].map(() => ({
-            left: Math.random() * 100,
-            delay: Math.random() * -10,
-            duration: 1.5 + Math.random() * 4,
-            size: 4 + Math.random() * 20,
-            sway: (Math.random() - 0.5) * 100
+        return [...Array(50)].map(() => ({
+            // Start from center (50%) with slight random offset
+            left: 50 + (Math.random() - 0.5) * 20,
+            delay: Math.random() * -5,
+            duration: 2 + Math.random() * 3,
+            size: 3 + Math.random() * 6,
+            // Sway more as they go up
+            sway: (Math.random() - 0.5) * 60
         }));
     }, []);
 
@@ -102,21 +104,31 @@ function App() {
             {/* Show Hero only when no category selected (or keep it if you want) - Let's keep smooth transition by hiding hero on detailed view for focus */}
             {!selectedCategory && (
                 <section className="hero-section">
-                    <div className="fire-glow"></div>
-                    <div className="fire-particles-container">
-                        {particles.map((p, i) => (
-                            <div
-                                key={i}
-                                className="fire-particle"
-                                style={{
-                                    '--left': `${p.left}%`,
-                                    '--delay': `${p.delay}s`,
-                                    '--duration': `${p.duration}s`,
-                                    '--size': `${p.size}px`,
-                                    '--sway': `${p.sway}px`
-                                }}
-                            ></div>
-                        ))}
+                    <div className="campfire-wrapper">
+                        <div className="campfire-container">
+                            <div className="flame-base">
+                                <div className="fire-light" />
+                                <div className="flame red" />
+                                <div className="flame orange" />
+                                <div className="flame yellow" />
+                                <div className="flame white" />
+                            </div>
+                            <div className="sparks-container">
+                                {particles.map((p, i) => (
+                                    <div
+                                        key={i}
+                                        className="fire-particle"
+                                        style={{
+                                            '--left': `${p.left}%`,
+                                            '--delay': `${p.delay}s`,
+                                            '--duration': `${p.duration}s`,
+                                            '--size': `${p.size}px`,
+                                            '--sway': `${p.sway}px`
+                                        }}
+                                    ></div>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                     <div className="hero-content">
                         <h1 className="hero-title">Team Campfire</h1>
