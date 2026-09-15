@@ -15,8 +15,9 @@ export type ProjectCategory = 'web' | 'game';
 export const projects: Record<ProjectCategory, Project[]> = {
   web: [
     {
-      name: '그냥수학?',
+      name: '그냥수학',
       description: '개발중인 웹 서비스',
+      image: '/images/geunyang-math-preview.png',
       demo: 'https://geunyang-math.team-campfire.dev/',
       status: 'In Development',
     },
