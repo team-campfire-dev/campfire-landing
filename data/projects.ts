@@ -15,17 +15,17 @@ export type ProjectCategory = 'web' | 'game';
 export const projects: Record<ProjectCategory, Project[]> = {
   web: [
     {
-      name: '그냥수학',
-      description: '개발중인 웹 서비스',
-      image: '/images/geunyang-math-preview.png',
-      demo: 'https://geunyang-math.team-campfire.dev/',
-      status: 'In Development',
-    },
-    {
       name: '서랍',
       description: '할 일과 루틴, 독서, 친구와 함께하는 소셜 투두 서비스',
       image: '/images/seorab-preview.png',
       demo: 'https://seorab.team-campfire.dev/',
+      status: 'In Development',
+    },
+    {
+      name: '그냥수학',
+      description: '개발중인 웹 서비스',
+      image: '/images/geunyang-math-preview.png',
+      demo: 'https://geunyang-math.team-campfire.dev/',
       status: 'In Development',
     },
   ],
