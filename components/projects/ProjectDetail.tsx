@@ -47,7 +47,7 @@ export default function ProjectDetail({ title, projects }: ProjectDetailProps) {
                       rel="noopener noreferrer"
                       className="btn-link"
                     >
-                      Demo
+                      바로가기
                     </a>
                   )}
                   {project.appStore && (

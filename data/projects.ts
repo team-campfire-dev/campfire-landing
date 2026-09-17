@@ -16,14 +16,13 @@ export const projects: Record<ProjectCategory, Project[]> = {
   web: [
     {
       name: '서랍',
-      description: '할 일과 루틴, 독서, 친구와 함께하는 소셜 투두 서비스',
+      description: '공부하는 사람을 위한 소셜 투두 - 자연어 할 일과 루틴, 독서 기록과 회고, 친구와 응원',
       image: '/images/seorab-preview.png',
       demo: 'https://seorab.team-campfire.dev/',
-      status: 'In Development',
     },
     {
       name: '그냥수학',
-      description: '개발중인 웹 서비스',
+      description: '기초부터 내 속도로 다시 배우는 성인 수학 - 진단 기반 맞춤 추천과 개인 복습 과제',
       image: '/images/geunyang-math-preview.png',
       demo: 'https://geunyang-math.team-campfire.dev/',
       status: 'In Development',
