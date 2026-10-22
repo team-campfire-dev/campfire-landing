@@ -33,7 +33,16 @@ campfire-landing/
 │
 ├── components/                 # React 컴포넌트
 │   ├── landing/
-│   │   ├── HeroSection.tsx     # 캠프파이어 애니메이션 (Client Component)
+│   │   ├── HeroSection.tsx     # 히어로 (Client Component) — 모닥불 캔버스 + 인터랙티브 타이틀 조립
+│   │   ├── hero/
+│   │   │   ├── HeroTitle.tsx   # 글자 단위로 쪼갠 타이틀 마크업
+│   │   │   ├── LetterPhysics.ts # 글자 낙하/드래그/던지기/연소 물리 (DOM 직접 제어)
+│   │   │   ├── PointerTracker.ts # 히어로 내 포인터 좌표·속도 추적
+│   │   │   └── campfire/
+│   │   │       ├── types.ts    # FireTheme / FireRenderer 테마 계약
+│   │   │       ├── CampfireController.ts # 캔버스 루프·리사이즈·화면 밖 일시정지·클릭 라우팅
+│   │   │       ├── noise.ts    # value noise 유틸
+│   │   │       └── themes/     # 테마 구현 (classic) + 레지스트리 (index.ts)
 │   │   ├── ProjectCards.tsx    # 카테고리 카드 (Server Component)
 │   │   └── MemberGrid.tsx      # 팀원 그리드 (Server Component)
 │   ├── projects/
@@ -101,6 +110,19 @@ interface Member {
   url: string;          // GitHub 프로필 URL
 }
 ```
+
+## 히어로 모닥불 테마
+
+히어로의 모닥불은 Canvas 2D로 그려지며, 테마 단위로 교체할 수 있습니다.
+
+- **테마 계약** — `components/landing/hero/campfire/types.ts`의 `FireTheme`
+  - `palette`: 타이틀 그라디언트·글로우·배경 색 (히어로에 CSS 변수 `--title-from` 등으로 주입)
+  - `createRenderer()`: `FireRenderer` 생성 — `update`/`draw`(매 프레임), `hotZone`(글자가 타는 영역), `stoke`(불 클릭), `feed`(글자가 불에 들어감)
+- **새 테마 추가** — `themes/`에 파일을 만들고 `themes/index.ts`의 `fireThemes`에 등록 → `<HeroSection themeId="..." />`
+- 테마별 CSS 오버라이드는 `.hero-section[data-fire-theme='...']` 셀렉터로 작성
+
+인터랙션: 타이틀 글자에 마우스를 대거나 터치하면 떨어지고, 바닥에 쌓인 글자는 잡아서 던질 수 있습니다.
+불에 들어간 글자는 타면서 불을 키우고, 잠시 뒤 타이틀에 다시 살아납니다. 불을 클릭하면 불티가 튀고, 포인터를 휘저으면 불길이 흔들립니다.
 
 ## 향후 확장 계획
 
