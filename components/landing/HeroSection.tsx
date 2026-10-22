@@ -1,60 +1,64 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef } from 'react';
+import HeroTitle from './hero/HeroTitle';
+import { LetterPhysics } from './hero/LetterPhysics';
+import { PointerTracker } from './hero/PointerTracker';
+import { CampfireController } from './hero/campfire/CampfireController';
+import { DEFAULT_FIRE_THEME, fireThemes, type FireThemeId } from './hero/campfire/themes';
 
-interface Particle {
-  left: number;
-  delay: number;
-  duration: number;
-  size: number;
-  sway: number;
+interface HeroSectionProps {
+  themeId?: FireThemeId;
 }
 
-function generateParticles(): Particle[] {
-  return [...Array(50)].map(() => ({
-    left: 50 + (Math.random() - 0.5) * 20,
-    delay: Math.random() * -5,
-    duration: 2 + Math.random() * 3,
-    size: 3 + Math.random() * 6,
-    sway: (Math.random() - 0.5) * 60,
-  }));
-}
+export default function HeroSection({ themeId = DEFAULT_FIRE_THEME }: HeroSectionProps) {
+  const theme = fireThemes[themeId];
+  const sectionRef = useRef<HTMLElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
+  const campfireRef = useRef<CampfireController | null>(null);
 
-export default function HeroSection() {
-  const [particles] = useState<Particle[]>(() => generateParticles());
+  useEffect(() => {
+    const section = sectionRef.current;
+    const canvas = canvasRef.current;
+    const title = titleRef.current;
+    const layer = layerRef.current;
+    if (!section || !canvas || !title || !layer) return;
+
+    const pointer = new PointerTracker(section);
+    const campfire = new CampfireController({ canvas, surface: section, pointer });
+    const letters = new LetterPhysics({ title, layer, surface: section, pointer, fire: campfire });
+    campfireRef.current = campfire;
+
+    return () => {
+      letters.destroy();
+      campfire.destroy();
+      pointer.destroy();
+      campfireRef.current = null;
+    };
+  }, []);
+
+  // Runs after the setup effect above, so the controller exists by now.
+  useEffect(() => {
+    campfireRef.current?.setTheme(theme);
+  }, [theme]);
+
+  const palette = {
+    '--title-from': theme.palette.titleFrom,
+    '--title-to': theme.palette.titleTo,
+    '--title-glow': theme.palette.titleGlow,
+    '--hero-ambient': theme.palette.ambient,
+  } as React.CSSProperties;
 
   return (
-    <section className="hero-section">
-      <div className="campfire-wrapper">
-        <div className="campfire-container">
-          <div className="flame-base">
-            <div className="fire-light" />
-            <div className="flame red" />
-            <div className="flame orange" />
-            <div className="flame yellow" />
-            <div className="flame white" />
-          </div>
-          <div className="sparks-container">
-            {particles.map((p, i) => (
-              <div
-                key={i}
-                className="fire-particle"
-                style={{
-                  '--left': `${p.left}%`,
-                  '--delay': `${p.delay}s`,
-                  '--duration': `${p.duration}s`,
-                  '--size': `${p.size}px`,
-                  '--sway': `${p.sway}px`,
-                } as React.CSSProperties}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
+    <section ref={sectionRef} className="hero-section" data-fire-theme={theme.id} style={palette}>
+      <canvas ref={canvasRef} className="campfire-canvas" aria-hidden="true" />
       <div className="hero-content">
-        <h1 className="hero-title">Team Campfire</h1>
+        <HeroTitle ref={titleRef} text="Team Campfire" />
         <p className="hero-subtitle">여러 분야의 작은 열정들이 만나는 공간</p>
       </div>
+      <div ref={layerRef} className="hero-physics-layer" aria-hidden="true" />
     </section>
   );
 }

@@ -8,14 +8,23 @@
 
 /* ===== Hero Section ===== */
 .hero-section {
+    --title-from: var(--accent-secondary);
+    --title-to: var(--accent-primary);
+    --title-glow: rgba(255, 95, 0, 0.45);
+    --hero-ambient: #2a1a10;
+
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     min-height: 80vh;
     position: relative;
-    background: radial-gradient(circle at center, #2a1a10 0%, var(--bg-color) 70%);
+    background: radial-gradient(circle at 50% 80%, var(--hero-ambient) 0%, var(--bg-color) 70%);
     overflow: hidden;
+}
+
+.hero-section.is-over-fire {
+    cursor: pointer;
 }
 
 .hero-content {
@@ -27,12 +36,9 @@
     font-size: 4rem;
     font-weight: 800;
     margin: 0;
-    background: linear-gradient(135deg, var(--accent-secondary), var(--accent-primary));
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
-    text-shadow: 0px 0px 20px rgba(255, 95, 0, 0.4);
+    filter: drop-shadow(0 0 18px var(--title-glow));
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .hero-subtitle {
@@ -42,212 +48,116 @@
     opacity: 0.9;
 }
 
-/* ===== Campfire Effect ===== */
-.campfire-wrapper {
+/* ===== Interactive Title ===== */
+.hero-word {
+    display: inline-block;
+    white-space: nowrap;
+}
+
+/* Each letter carries its slice of the title gradient (--t0..--t1), so it keeps its color when it falls. */
+.hero-letter,
+.title-letter-body {
+    background-image: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--title-to) calc(var(--t0, 0) * 100%), var(--title-from)),
+        color-mix(in srgb, var(--title-to) calc(var(--t1, 1) * 100%), var(--title-from))
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    touch-action: none;
+}
+
+.hero-letter {
+    display: inline-block;
+    cursor: grab;
+}
+
+.hero-letter[data-state='gone'] {
+    visibility: hidden;
+}
+
+.hero-letter[data-state='returning'] {
+    animation: letter-rekindle 0.9s ease-out;
+}
+
+.hero-physics-layer {
     position: absolute;
-    bottom: -100px;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: flex-end;
+    inset: 0;
     pointer-events: none;
-    z-index: 1;
+    z-index: 3;
 }
 
-.campfire-container {
-    position: relative;
-    width: 400px;
-    height: 400px;
-    transform: scale(1.5);
-}
-
-.flame-base {
+.title-letter-body {
     position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 200px;
-    height: 200px;
+    top: 0;
+    left: 0;
+    display: block;
+    text-align: center;
+    pointer-events: auto;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    will-change: transform;
+    filter: drop-shadow(0 0 12px var(--title-glow));
 }
 
-.fire-light {
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 300px;
-    height: 300px;
-    background: radial-gradient(circle, rgba(255, 80, 0, 0.4) 0%, rgba(0, 0, 0, 0) 70%);
-    border-radius: 50%;
-    animation: breathing-glow 2s infinite ease-in-out alternate;
-    mix-blend-mode: screen;
+.title-letter-body.is-dragging {
+    cursor: grabbing;
 }
 
-@keyframes breathing-glow {
+.title-letter-body.is-burning {
+    pointer-events: none;
+    animation: letter-burn 0.9s ease-in forwards;
+}
+
+.title-letter-body.is-fading {
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+}
+
+@keyframes letter-burn {
     0% {
-        opacity: 0.6;
-        transform: translateX(-50%) scale(1);
+        opacity: 1;
+        filter: brightness(1) drop-shadow(0 0 12px var(--title-glow));
+    }
+    35% {
+        opacity: 1;
+        filter: brightness(1.9) saturate(1.4) drop-shadow(0 0 22px rgba(255, 170, 60, 0.9));
     }
     100% {
-        opacity: 0.9;
-        transform: translateX(-50%) scale(1.1);
+        opacity: 0;
+        filter: brightness(0.25) blur(3px) drop-shadow(0 0 4px rgba(255, 80, 0, 0.4));
     }
 }
 
-.flame {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    border-radius: 50% 0 50% 50%;
-    transform-origin: bottom right;
-    transform: rotate(-45deg);
-    mix-blend-mode: screen;
-    opacity: 0.9;
-    filter: blur(1px);
-}
-
-.flame.red {
-    width: 160px;
-    height: 160px;
-    background: radial-gradient(circle at center, rgba(255, 69, 0, 1), rgba(100, 0, 0, 0));
-    box-shadow: 0 0 50px 20px rgba(255, 69, 0, 0.5);
-    left: 20px;
-    animation: flicker-red 1.2s infinite ease-in-out alternate;
-}
-
-.flame.orange {
-    width: 120px;
-    height: 120px;
-    background: radial-gradient(circle at center, rgba(255, 140, 0, 1), rgba(150, 50, 0, 0));
-    box-shadow: 0 0 30px 10px rgba(255, 140, 0, 0.5);
-    left: 40px;
-    bottom: 10px;
-    animation: flicker-orange 1.8s infinite ease-in-out alternate;
-}
-
-.flame.yellow {
-    width: 80px;
-    height: 80px;
-    background: radial-gradient(circle at center, rgba(255, 215, 0, 1), rgba(200, 100, 0, 0));
-    box-shadow: 0 0 20px 5px rgba(255, 215, 0, 0.5);
-    left: 60px;
-    bottom: 20px;
-    animation: flicker-yellow 1s infinite ease-in-out alternate;
-}
-
-.flame.white {
-    width: 40px;
-    height: 40px;
-    background: radial-gradient(circle at center, rgba(255, 255, 255, 1), rgba(255, 255, 200, 0));
-    box-shadow: 0 0 15px 5px rgba(255, 255, 255, 0.8);
-    left: 80px;
-    bottom: 40px;
-    animation: flicker-white 0.6s infinite ease-in-out alternate;
-}
-
-/* Organic flicker animations */
-@keyframes flicker-red {
+@keyframes letter-rekindle {
     0% {
-        transform: rotate(-45deg) scale(1, 1);
-        border-radius: 50% 0 50% 50%;
-    }
-    20% {
-        transform: rotate(-47deg) scale(1.05, 0.95);
-    }
-    40% {
-        transform: rotate(-43deg) scale(0.95, 1.1);
+        opacity: 0;
+        transform: translateY(10px) scale(0.7);
+        filter: brightness(2.4) blur(2px);
     }
     60% {
-        transform: rotate(-46deg) scale(1.02, 0.98);
-    }
-    80% {
-        transform: rotate(-44deg) scale(0.98, 1.05);
-    }
-    100% {
-        transform: rotate(-45deg) scale(1, 1);
-        border-radius: 45% 5% 55% 45%;
-    }
-}
-
-@keyframes flicker-orange {
-    0% {
-        transform: rotate(-45deg) scale(1, 1);
-    }
-    25% {
-        transform: rotate(-48deg) scale(1.1, 0.9);
-    }
-    50% {
-        transform: rotate(-43deg) scale(0.9, 1.15);
-    }
-    75% {
-        transform: rotate(-46deg) scale(1.05, 0.95);
-    }
-    100% {
-        transform: rotate(-45deg) scale(1, 1);
-    }
-}
-
-@keyframes flicker-yellow {
-    0% {
-        transform: rotate(-45deg) scale(1);
-        opacity: 0.8;
-    }
-    50% {
-        transform: rotate(-42deg) scale(1.2);
         opacity: 1;
+        filter: brightness(1.5) blur(0);
     }
     100% {
-        transform: rotate(-47deg) scale(0.9);
-        opacity: 0.8;
-    }
-}
-
-@keyframes flicker-white {
-    0% {
-        transform: rotate(-45deg) scale(1);
-        opacity: 0.8;
-    }
-    50% {
-        transform: rotate(-48deg) scale(1.3);
         opacity: 1;
-    }
-    100% {
-        transform: rotate(-43deg) scale(0.8);
-        opacity: 0.8;
+        transform: none;
+        filter: none;
     }
 }
 
-.fire-particle {
+/* ===== Campfire Canvas ===== */
+.campfire-canvas {
     position: absolute;
-    bottom: 20px;
-    left: var(--left);
-    width: var(--size);
-    height: var(--size);
-    border-radius: 50%;
-    background: rgba(255, 200, 50, 0.8);
-    box-shadow: 0 0 10px 1px rgba(255, 100, 0, 0.6);
-    opacity: 0;
-    animation: rise var(--duration) infinite ease-in;
-    animation-delay: var(--delay);
+    inset: 0;
+    width: 100%;
+    height: 100%;
     pointer-events: none;
-    mix-blend-mode: screen;
-}
-
-@keyframes rise {
-    0% {
-        transform: translate(0, 0) scale(0.5);
-        opacity: 0;
-    }
-    20% {
-        opacity: 1;
-        transform: translate(calc(var(--sway) * 0.2), -30px) scale(0.8);
-    }
-    100% {
-        transform: translate(var(--sway), -200px) scale(0.1);
-        opacity: 0;
-    }
+    z-index: 1;
 }
 
 /* ===== About Section ===== */

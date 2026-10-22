@@ -29,6 +29,7 @@ React 19는 컴포넌트 렌더링 중 순수성(purity)을 엄격히 검사합�
 
 ## Client vs Server Components
 
-- `HeroSection.tsx`만 `'use client'` 지시어 사용 (useState 사용)
+- `HeroSection.tsx`만 `'use client'` 지시어 사용 (마운트 시 캔버스·물리 엔진 생성)
+- 히어로 애니메이션은 매 프레임 React state를 바꾸지 않고, `hero/` 아래의 순수 TS 클래스가 DOM·캔버스를 직접 갱신합니다
 - 나머지 컴포넌트는 모두 Server Component
 - 새 컴포넌트에서 `useState`, `useEffect` 등 훅 사용 시 `'use client'` 필수
