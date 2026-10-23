@@ -1,5 +1,5 @@
 import { noise1, noise2 } from '../noise';
-import type { FireFrame, FireRenderer, FireTheme, HotZone, PointerSample } from '../types';
+import type { FireFrame, FireRenderer, FireTap, FireTheme, HotZone, PointerSample } from '../types';
 
 type RGB = [number, number, number];
 
@@ -176,7 +176,8 @@ class ClassicCampfire implements FireRenderer {
     return { x: this.cx - 100 * s, y: top, width: 200 * s, height: this.height - top };
   }
 
-  stoke(x: number) {
+  tap({ x, onFire, onLetter }: FireTap) {
+    if (!onFire || onLetter) return;
     this.boost = Math.min(this.boost + 0.35, 2.6);
     const bx = clamp(x, this.cx - 70 * this.scale, this.cx + 70 * this.scale);
     for (let i = 0; i < 28; i++) this.burstEmber(bx, this.cy - 30 * this.scale, 0.9);
@@ -563,5 +564,6 @@ export const classicTheme: FireTheme = {
     titleGlow: 'rgba(255, 95, 0, 0.45)',
     ambient: '#2a1a10',
   },
+  letters: { knock: 'touch', draggable: true, item: false },
   createRenderer: () => new ClassicCampfire(),
 };

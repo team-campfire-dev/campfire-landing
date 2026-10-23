@@ -1,5 +1,5 @@
 import type { PointerTracker } from '../PointerTracker';
-import type { FireRenderer, FireTheme } from './types';
+import type { FireHost, FireRenderer, FireTheme } from './types';
 
 interface CampfireOptions {
   canvas: HTMLCanvasElement;
@@ -10,7 +10,7 @@ interface CampfireOptions {
 
 /**
  * Runs the active theme's renderer on the hero canvas: sizing, the frame loop,
- * pausing while off-screen, and routing clicks to the fire.
+ * pausing while off-screen, and routing taps to the theme.
  */
 export class CampfireController {
   private readonly ctx: CanvasRenderingContext2D | null;
@@ -39,7 +39,7 @@ export class CampfireController {
       else this.stop();
     });
     this.visibilityObserver.observe(opts.canvas);
-    opts.surface.addEventListener('pointerdown', this.onPointerDown);
+    opts.surface.addEventListener('click', this.onClick);
     this.resize();
   }
 
@@ -48,7 +48,7 @@ export class CampfireController {
     this.renderer?.dispose?.();
     this.theme = theme;
     this.time = 0;
-    this.renderer = theme.createRenderer();
+    this.renderer = theme.createRenderer(this.host);
     this.renderer.resize(this.width, this.height);
     this.start();
   }
@@ -64,6 +64,11 @@ export class CampfireController {
     );
   }
 
+  /** Where fallen letters rest, in surface coordinates. */
+  groundY(): number | null {
+    return this.renderer?.groundY?.() ?? null;
+  }
+
   feed(x: number, y: number, fuel: number) {
     this.renderer?.feed(x, y, fuel);
   }
@@ -72,7 +77,7 @@ export class CampfireController {
     this.stop();
     this.resizeObserver.disconnect();
     this.visibilityObserver.disconnect();
-    this.opts.surface.removeEventListener('pointerdown', this.onPointerDown);
+    this.opts.surface.removeEventListener('click', this.onClick);
     this.opts.surface.classList.remove('is-over-fire');
     this.renderer?.dispose?.();
     this.renderer = null;
@@ -126,9 +131,33 @@ export class CampfireController {
     }
   };
 
-  private onPointerDown = (e: PointerEvent) => {
-    if ((e.target as Element).closest('[data-letter], .title-letter-body, a, button')) return;
+  private readonly host: FireHost = {
+    shake: (strength) => {
+      if (this.reducedMotion.matches) return;
+      const s = strength;
+      this.opts.surface.animate(
+        [
+          { transform: 'translate(0, 0)' },
+          { transform: `translate(${-s}px, ${s * 0.6}px)` },
+          { transform: `translate(${s * 0.7}px, ${-s * 0.4}px)` },
+          { transform: `translate(${-s * 0.3}px, ${s * 0.2}px)` },
+          { transform: 'translate(0, 0)' },
+        ],
+        { duration: 160, easing: 'ease-out' },
+      );
+    },
+  };
+
+  // `click` rather than pointerdown, so a touch that starts a scroll isn't a tap.
+  private onClick = (e: MouseEvent) => {
+    const target = e.target as Element;
+    if (target.closest('a, button')) return;
     const { x, y } = this.opts.pointer.toLocal(e.clientX, e.clientY);
-    if (this.isInFire(x, y, 24)) this.renderer?.stoke(x, y);
+    this.renderer?.tap({
+      x,
+      y,
+      onFire: this.isInFire(x, y, 24),
+      onLetter: !!target.closest('[data-letter], .title-letter-body'),
+    });
   };
 }
