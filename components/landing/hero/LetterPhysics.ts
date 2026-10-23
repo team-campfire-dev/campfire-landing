@@ -1,8 +1,11 @@
+import type { LetterBehavior } from './campfire/types';
 import type { PointerTracker } from './PointerTracker';
 
 export interface FireTarget {
   isInFire(x: number, y: number): boolean;
   feed(x: number, y: number, fuel: number): void;
+  /** Where fallen letters rest; null means the bottom of the surface. */
+  groundY(): number | null;
 }
 
 interface LetterPhysicsOptions {
@@ -13,9 +16,16 @@ interface LetterPhysicsOptions {
   surface: HTMLElement;
   pointer: PointerTracker;
   fire: FireTarget;
+  behavior: LetterBehavior;
 }
 
 type BodyState = 'flying' | 'dragging' | 'burning' | 'fading';
+
+interface Launch {
+  vx: number;
+  vy: number;
+  spin: number;
+}
 
 interface LetterBody {
   span: HTMLElement;
@@ -28,10 +38,15 @@ interface LetterBody {
   spin: number;
   w: number;
   h: number;
-  radius: number;
+  /** Current size factor; dropped items shrink towards ITEM_SCALE. */
+  scale: number;
+  /** Floats, bobs and turns like a dropped item instead of tumbling. */
+  item: boolean;
+  phase: number;
   state: BodyState;
   /** Seconds spent resting (flying) or in the current burn/fade. */
   timer: number;
+  grounded: boolean;
   pointerId: number | null;
   targetX: number;
   targetY: number;
@@ -48,35 +63,67 @@ const FADE_SECONDS = 0.6;
 const RETURN_DELAY_MS = 1600;
 const REKINDLE_MS = 900;
 const MAX_THROW = 2400;
+const ITEM_SCALE = 0.7;
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
+/** Kick for a letter hit by a shot at (x, y): away from the impact and upwards. */
+function blastFrom(x: number, y: number, cx: number, cy: number): Launch {
+  const dx = cx - x;
+  const dy = cy - y;
+  const d = Math.hypot(dx, dy) || 1;
+  return {
+    vx: (dx / d) * 700 + rand(-200, 200),
+    vy: Math.min((dy / d) * 500, 0) - rand(500, 900),
+    spin: rand(-14, 14),
+  };
+}
+
 /**
  * Lets title letters be knocked out of the heading: they fall with gravity, bounce,
  * pile up, can be grabbed and thrown, and burn up when they land in the fire.
+ * How they come loose and behave is set per theme (`LetterBehavior`).
  */
 export class LetterPhysics {
   private bodies: LetterBody[] = [];
+  private behavior: LetterBehavior;
   private raf = 0;
   private last = 0;
+  private clock = 0;
   private readonly timers = new Set<number>();
   private readonly unbind: Array<() => void> = [];
 
   constructor(private readonly opts: LetterPhysicsOptions) {
+    this.behavior = opts.behavior;
     opts.title.querySelectorAll<HTMLElement>('[data-letter]').forEach((span) => {
       const onEnter = (e: PointerEvent) => {
-        if (e.pointerType === 'mouse') this.release(span, null);
+        if (this.behavior.knock === 'touch' && e.pointerType === 'mouse') this.release(span);
       };
-      const onDown = (e: PointerEvent) => this.release(span, e);
+      const onDown = (e: PointerEvent) => {
+        if (this.behavior.knock !== 'touch') return;
+        this.release(span, this.behavior.draggable ? e : undefined);
+      };
+      const onClick = (e: MouseEvent) => {
+        if (this.behavior.knock !== 'shoot') return;
+        const p = this.opts.pointer.toLocal(e.clientX, e.clientY);
+        const rect = this.local(span.getBoundingClientRect());
+        this.release(span, undefined, blastFrom(p.x, p.y, rect.x, rect.y));
+      };
       span.addEventListener('pointerenter', onEnter);
       span.addEventListener('pointerdown', onDown);
+      span.addEventListener('click', onClick);
       this.unbind.push(() => {
         span.removeEventListener('pointerenter', onEnter);
         span.removeEventListener('pointerdown', onDown);
+        span.removeEventListener('click', onClick);
         delete span.dataset.state;
       });
     });
+  }
+
+  setBehavior(behavior: LetterBehavior) {
+    this.behavior = behavior;
   }
 
   destroy() {
@@ -92,12 +139,18 @@ export class LetterPhysics {
     this.unbind.forEach((fn) => fn());
   }
 
-  /** Pops a letter out of the title, optionally straight into the user's hand. */
-  private release(span: HTMLElement, grab: PointerEvent | null) {
+  /** Center of a client rect in surface coordinates. */
+  private local(rect: DOMRect) {
+    const p = this.opts.pointer.toLocal(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return { x: p.x, y: p.y };
+  }
+
+  /** Pops a letter out of the title, optionally straight into the user's hand or with a given kick. */
+  private release(span: HTMLElement, grab?: PointerEvent, launch?: Launch) {
     if (span.dataset.state === 'gone') return;
-    const { layer, surface, pointer } = this.opts;
-    const surfaceRect = surface.getBoundingClientRect();
+    const { layer, pointer } = this.opts;
     const rect = span.getBoundingClientRect();
+    const center = this.local(rect);
     const style = getComputedStyle(span);
 
     const el = document.createElement('span');
@@ -116,20 +169,28 @@ export class LetterPhysics {
     span.dataset.state = 'gone';
 
     const velocity = pointer.sample() ?? { vx: 0, vy: 0 };
+    const kick = launch ?? {
+      vx: clamp(velocity.vx * 0.4, -900, 900) + rand(-60, 60),
+      vy: clamp(velocity.vy * 0.4, -900, 900) - 160,
+      spin: 0,
+    };
     const body: LetterBody = {
       span,
       el,
-      x: rect.left - surfaceRect.left + rect.width / 2,
-      y: rect.top - surfaceRect.top + rect.height / 2,
-      vx: clamp(velocity.vx * 0.4, -900, 900) + rand(-60, 60),
-      vy: clamp(velocity.vy * 0.4, -900, 900) - 160,
+      x: center.x,
+      y: center.y,
+      vx: kick.vx,
+      vy: kick.vy,
       angle: 0,
-      spin: 0,
+      spin: launch ? kick.spin : rand(-4, 4) + kick.vx * 0.006,
       w: rect.width,
       h: rect.height,
-      radius: (rect.width + rect.height) * 0.22,
+      scale: 1,
+      item: this.behavior.item,
+      phase: rand(0, Math.PI * 2),
       state: 'flying',
       timer: 0,
+      grounded: false,
       pointerId: null,
       targetX: 0,
       targetY: 0,
@@ -137,7 +198,6 @@ export class LetterPhysics {
       grabY: 0,
       cleanup: () => {},
     };
-    body.spin = rand(-4, 4) + body.vx * 0.006;
     body.cleanup = this.bindBody(body);
     this.bodies.push(body);
     this.render(body);
@@ -148,7 +208,18 @@ export class LetterPhysics {
 
   private bindBody(body: LetterBody) {
     const { el } = body;
-    const onDown = (e: PointerEvent) => this.grab(body, e);
+    const onDown = (e: PointerEvent) => {
+      if (this.behavior.draggable && this.behavior.knock === 'touch') this.grab(body, e);
+    };
+    const onClick = (e: MouseEvent) => {
+      if (this.behavior.knock !== 'shoot' || body.state !== 'flying') return;
+      const p = this.opts.pointer.toLocal(e.clientX, e.clientY);
+      const kick = blastFrom(p.x, p.y, body.x, body.y);
+      body.vx = kick.vx;
+      body.vy = kick.vy;
+      body.spin = kick.spin;
+      body.timer = 0;
+    };
     const onMove = (e: PointerEvent) => {
       if (body.state !== 'dragging' || e.pointerId !== body.pointerId) return;
       const p = this.opts.pointer.toLocal(e.clientX, e.clientY);
@@ -161,7 +232,7 @@ export class LetterPhysics {
     };
     const onEnter = (e: PointerEvent) => {
       // Brushing a fallen letter with the mouse nudges it along.
-      if (e.pointerType !== 'mouse' || body.state !== 'flying') return;
+      if (this.behavior.knock !== 'touch' || e.pointerType !== 'mouse' || body.state !== 'flying') return;
       const v = this.opts.pointer.sample();
       if (!v || Math.hypot(v.vx, v.vy) < 150) return;
       body.vx += clamp(v.vx * 0.5, -800, 800);
@@ -170,12 +241,14 @@ export class LetterPhysics {
       body.timer = 0;
     };
     el.addEventListener('pointerdown', onDown);
+    el.addEventListener('click', onClick);
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerup', onUp);
     el.addEventListener('pointercancel', onUp);
     el.addEventListener('pointerenter', onEnter);
     return () => {
       el.removeEventListener('pointerdown', onDown);
+      el.removeEventListener('click', onClick);
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerup', onUp);
       el.removeEventListener('pointercancel', onUp);
@@ -188,6 +261,7 @@ export class LetterPhysics {
     e.preventDefault();
     const p = this.opts.pointer.toLocal(e.clientX, e.clientY);
     body.state = 'dragging';
+    body.grounded = false;
     body.pointerId = e.pointerId;
     body.grabX = p.x - body.x;
     body.grabY = p.y - body.y;
@@ -259,11 +333,12 @@ export class LetterPhysics {
   private tick = (now: number) => {
     const dt = Math.min((now - this.last) / 1000, 1 / 30);
     this.last = now;
+    this.clock += dt;
     const width = this.opts.surface.clientWidth;
-    const height = this.opts.surface.clientHeight;
+    const floor = this.opts.fire.groundY() ?? this.opts.surface.clientHeight;
 
     for (let step = 0; step < 2; step++) {
-      for (const body of this.bodies) this.integrate(body, dt / 2, width, height);
+      for (const body of this.bodies) this.integrate(body, dt / 2, width, floor);
       this.collide();
     }
 
@@ -279,7 +354,9 @@ export class LetterPhysics {
     this.raf = this.bodies.length ? requestAnimationFrame(this.tick) : 0;
   };
 
-  private integrate(body: LetterBody, dt: number, width: number, height: number) {
+  private integrate(body: LetterBody, dt: number, width: number, floor: number) {
+    if (body.item) body.scale += (ITEM_SCALE - body.scale) * Math.min(1, dt * 10);
+
     switch (body.state) {
       case 'burning':
         body.timer += dt;
@@ -297,24 +374,34 @@ export class LetterPhysics {
         body.y += (body.targetY - body.y) * k;
         body.vx = (body.x - px) / dt;
         body.vy = (body.y - py) / dt;
-        // Swing with the drag like something held by one corner.
-        const tilt = clamp(body.vx * 0.0006, -0.5, 0.5);
-        body.spin = (tilt - body.angle) * 12;
-        body.angle += body.spin * dt;
+        if (!body.item) {
+          // Swing with the drag like something held by one corner.
+          const tilt = clamp(body.vx * 0.0006, -0.5, 0.5);
+          body.spin = (tilt - body.angle) * 12;
+          body.angle += body.spin * dt;
+        }
         break;
       }
       case 'flying': {
         body.vy += GRAVITY * dt;
         body.vx *= 1 - 0.25 * dt;
-        body.spin *= 1 - 0.4 * dt;
         body.x += body.vx * dt;
         body.y += body.vy * dt;
-        body.angle += body.spin * dt;
+        if (body.item) {
+          // Dropped items stay upright and turn about their vertical axis instead (see render).
+          body.angle = 0;
+          body.spin = 0;
+        } else {
+          body.spin *= 1 - 0.4 * dt;
+          body.angle += body.spin * dt;
+        }
 
+        const w = body.w * body.scale;
+        const h = body.h * body.scale;
         const cos = Math.abs(Math.cos(body.angle));
         const sin = Math.abs(Math.sin(body.angle));
-        const extentX = (body.w * cos + body.h * sin) / 2;
-        const extentY = (body.w * sin + body.h * cos) / 2;
+        const extentX = (w * cos + h * sin) / 2;
+        const extentY = (w * sin + h * cos) / 2;
 
         if (body.x - extentX < 0) {
           body.x = extentX;
@@ -324,17 +411,20 @@ export class LetterPhysics {
           body.vx = -Math.abs(body.vx) * 0.5;
         }
 
-        if (body.y + extentY >= height) {
-          body.y = height - extentY;
+        body.grounded = body.y + extentY >= floor;
+        if (body.grounded) {
+          body.y = floor - extentY;
           if (body.vy > 0) {
             body.vy = body.vy > 140 ? -body.vy * BOUNCE : 0;
             body.spin = body.spin * 0.6 + body.vx * 0.002;
           }
           body.vx *= Math.max(0, 1 - 5 * dt);
-          // Topple onto whichever side is nearest.
-          const rest = Math.round(body.angle / (Math.PI / 2)) * (Math.PI / 2);
-          body.spin += (rest - body.angle) * 40 * dt;
-          body.spin *= Math.max(0, 1 - 8 * dt);
+          if (!body.item) {
+            // Topple onto whichever side is nearest.
+            const rest = Math.round(body.angle / (Math.PI / 2)) * (Math.PI / 2);
+            body.spin += (rest - body.angle) * 40 * dt;
+            body.spin *= Math.max(0, 1 - 8 * dt);
+          }
           const still = Math.abs(body.vx) < 15 && Math.abs(body.vy) < 15 && Math.abs(body.spin) < 0.3;
           body.timer = still ? body.timer + dt : 0;
           if (body.timer > REST_SECONDS) this.fade(body);
@@ -346,16 +436,16 @@ export class LetterPhysics {
     if (this.opts.fire.isInFire(body.x, body.y)) this.ignite(body);
   }
 
-  /** Cheap circle-vs-circle separation so fallen letters pile up instead of overlapping. */
+  /** Cheap circle-vs-circle separation so fallen letters pile up instead of overlapping. Items pass through each other. */
   private collide() {
-    const solid = this.bodies.filter((b) => b.state === 'flying' || b.state === 'dragging');
+    const solid = this.bodies.filter((b) => !b.item && (b.state === 'flying' || b.state === 'dragging'));
     for (let i = 0; i < solid.length; i++) {
       for (let j = i + 1; j < solid.length; j++) {
         const a = solid[i];
         const b = solid[j];
         const dx = b.x - a.x;
         const dy = b.y - a.y;
-        const min = a.radius + b.radius;
+        const min = (a.w + a.h + b.w + b.h) * 0.22;
         const d2 = dx * dx + dy * dy;
         if (d2 >= min * min || d2 < 1e-6) continue;
         const ia = a.state === 'dragging' ? 0 : 1;
@@ -383,9 +473,17 @@ export class LetterPhysics {
   }
 
   private render(body: LetterBody) {
-    const scale = body.state === 'burning' ? 1 - 0.35 * (body.timer / BURN_SECONDS) : 1;
+    let scale = body.scale;
+    if (body.state === 'burning') scale *= 1 - 0.35 * (body.timer / BURN_SECONDS);
+    const x = body.x - body.w / 2;
+    let y = body.y - body.h / 2;
+    let turn = '';
+    if (body.item) {
+      const bob = body.grounded ? (3 + 3 * Math.sin(this.clock * 3 + body.phase)) * body.scale : 0;
+      y -= bob;
+      turn = ` rotateY(${this.clock * 1.8 + body.phase}rad)`;
+    }
     body.el.style.transform =
-      `translate3d(${body.x - body.w / 2}px, ${body.y - body.h / 2}px, 0) ` +
-      `rotate(${body.angle}rad) scale(${scale})`;
+      `translate3d(${x}px, ${y}px, 0) rotate(${body.angle}rad)${turn} scale(${scale})`;
   }
 }

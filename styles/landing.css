@@ -21,6 +21,8 @@
     position: relative;
     background: radial-gradient(circle at 50% 80%, var(--hero-ambient) 0%, var(--bg-color) 70%);
     overflow: hidden;
+    /* Horizontal swipes switch themes; vertical ones still scroll the page. */
+    touch-action: pan-y;
 }
 
 .hero-section.is-over-fire {
@@ -158,6 +160,179 @@
     height: 100%;
     pointer-events: none;
     z-index: 1;
+}
+
+/* ===== Fire Theme Carousel ===== */
+.hero-section .fire-theme-arrow {
+    position: absolute;
+    top: 50%;
+    z-index: 4;
+    width: 56px;
+    height: 112px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    color: rgba(255, 255, 255, 0.28);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    transform: translateY(-50%);
+    transition: color 0.25s ease, transform 0.25s ease;
+}
+
+.fire-theme-arrow.is-prev {
+    left: 8px;
+}
+
+.fire-theme-arrow.is-next {
+    right: 8px;
+}
+
+.fire-theme-arrow svg {
+    width: 18px;
+    height: 36px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.hero-section .fire-theme-arrow:hover {
+    color: var(--title-from);
+}
+
+.hero-section .fire-theme-arrow.is-prev:hover {
+    transform: translateY(-50%) translateX(-3px);
+}
+
+.hero-section .fire-theme-arrow.is-next:hover {
+    transform: translateY(-50%) translateX(3px);
+}
+
+.fire-theme-dots {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    z-index: 4;
+    display: flex;
+    transform: translateX(-50%);
+}
+
+/* The button is the hit area; the visible dot is drawn inside it. */
+.hero-section .fire-theme-dot {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+}
+
+.fire-theme-dot::after {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.22);
+    transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.fire-theme-dot:hover::after {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.fire-theme-dot[aria-pressed='true']::after {
+    width: 16px;
+    background: var(--title-from);
+}
+
+:is(.fire-theme-arrow, .fire-theme-dot):focus-visible {
+    outline: 2px solid var(--title-to);
+    outline-offset: -4px;
+    border-radius: 8px;
+}
+
+.fire-theme-toast {
+    position: absolute;
+    top: 46px;
+    left: 50%;
+    z-index: 4;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--title-from);
+    pointer-events: none;
+    white-space: nowrap;
+    opacity: 0;
+    animation: theme-toast 1.6s ease forwards;
+}
+
+@keyframes theme-toast {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -4px);
+    }
+    15%,
+    70% {
+        opacity: 0.9;
+        transform: translate(-50%, 0);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, 0);
+    }
+}
+
+/* Touch screens switch by swiping; the arrows would only crowd the title. */
+@media (hover: none) {
+    .hero-section .fire-theme-arrow {
+        display: none;
+    }
+}
+
+/* ===== Theme: DOOM ===== */
+.hero-section[data-fire-theme='doom'],
+.hero-section[data-fire-theme='doom'] .hero-content,
+.hero-section[data-fire-theme='doom'] :is(.hero-letter, .title-letter-body) {
+    cursor: crosshair;
+}
+
+.hero-section[data-fire-theme='doom'] :is(.hero-title, .title-letter-body) {
+    font-family: var(--font-doom), Impact, sans-serif;
+    font-weight: 400;
+    text-transform: uppercase;
+}
+
+.hero-section[data-fire-theme='doom'] .hero-title {
+    font-size: 3.6rem;
+    filter: drop-shadow(3px 4px 0 #2b0400) drop-shadow(0 0 18px var(--title-glow));
+}
+
+/* Hot metal, top to bottom, like the DOOM logo — the same on every letter. */
+.hero-section[data-fire-theme='doom'] :is(.hero-letter, .title-letter-body) {
+    background-image: linear-gradient(180deg, #fff6b0 0%, #ffc21a 30%, #e2550b 62%, #7a1505 100%);
+}
+
+.hero-section[data-fire-theme='doom'] .title-letter-body {
+    filter: drop-shadow(3px 4px 0 #2b0400);
+}
+
+/* ===== Theme: Minecraft / Soul Campfire ===== */
+.hero-section:is([data-fire-theme='minecraft'], [data-fire-theme='soul']) :is(.hero-title, .title-letter-body) {
+    font-family: var(--font-pixel), monospace;
+    font-weight: 700;
+}
+
+.hero-section:is([data-fire-theme='minecraft'], [data-fire-theme='soul']) .hero-title {
+    filter: drop-shadow(4px 4px 0 rgba(0, 0, 0, 0.6)) drop-shadow(0 0 14px var(--title-glow));
+}
+
+.hero-section:is([data-fire-theme='minecraft'], [data-fire-theme='soul']) .title-letter-body {
+    filter: drop-shadow(3px 3px 0 rgba(0, 0, 0, 0.6));
 }
 
 /* ===== About Section ===== */
@@ -431,6 +606,11 @@
     .hero-title {
         font-size: 2.5rem;
     }
+
+    .hero-section[data-fire-theme='doom'] .hero-title {
+        font-size: 2.1rem;
+    }
+
 
     .card-container {
         flex-direction: column;

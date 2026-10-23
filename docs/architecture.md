@@ -38,11 +38,14 @@ campfire-landing/
 │   │   │   ├── HeroTitle.tsx   # 글자 단위로 쪼갠 타이틀 마크업
 │   │   │   ├── LetterPhysics.ts # 글자 낙하/드래그/던지기/연소 물리 (DOM 직접 제어)
 │   │   │   ├── PointerTracker.ts # 히어로 내 포인터 좌표·속도 추적
+│   │   │   ├── swipe.ts        # 히어로 좌우 스와이프 → 테마 전환
+│   │   │   ├── useFireTheme.ts # 선택한 테마 (localStorage 저장)
 │   │   │   └── campfire/
-│   │   │       ├── types.ts    # FireTheme / FireRenderer 테마 계약
-│   │   │       ├── CampfireController.ts # 캔버스 루프·리사이즈·화면 밖 일시정지·클릭 라우팅
-│   │   │       ├── noise.ts    # value noise 유틸
-│   │   │       └── themes/     # 테마 구현 (classic) + 레지스트리 (index.ts)
+│   │   │       ├── types.ts    # FireTheme / FireRenderer / LetterBehavior 테마 계약
+│   │   │       ├── CampfireController.ts # 캔버스 루프·리사이즈·화면 밖 일시정지·탭 라우팅·화면 흔들림
+│   │   │       ├── pixelFire.ts # PSX DOOM 불 알고리즘 (픽셀 테마 공용)
+│   │   │       ├── noise.ts    # value noise / hash 유틸
+│   │   │       └── themes/     # classic · doom · minecraft(+soul) + 레지스트리 (index.ts)
 │   │   ├── ProjectCards.tsx    # 카테고리 카드 (Server Component)
 │   │   └── MemberGrid.tsx      # 팀원 그리드 (Server Component)
 │   ├── projects/
@@ -114,15 +117,20 @@ interface Member {
 ## 히어로 모닥불 테마
 
 히어로의 모닥불은 Canvas 2D로 그려지며, 테마 단위로 교체할 수 있습니다.
+방문자는 히어로를 좌우로 스와이프하거나 상단의 ‹ › 버튼·점으로 테마를 바꾸고, 선택은 localStorage에 저장됩니다.
+
+| 테마 | 불 | 타이틀 글자 | 탭/클릭 |
+|------|----|-------------|---------|
+| `classic` | 파티클 모닥불 (통나무·돌·불티·연기) | 대거나 터치하면 떨어짐, 잡아서 던지기 | 불 클릭 → 불티 |
+| `doom` | PSX DOOM 불 알고리즘 (35Hz), 화면 하단 불벽 | Bungee 폰트, 총으로 쏘면 날아감 | 어디든 총격 → 섬광·화면 흔들림·총소리·총알 자국 |
+| `minecraft` / `soul` | 정면 픽셀 아트 모닥불 블록 + 잔디 지면, 앞뒤 두 겹 픽셀 불꽃 혀, 단계형 조명, 네모 연기 | Pixelify Sans 폰트, 떨어진 글자는 아이템처럼 작아져 떠서 회전 | 모닥불 클릭 → 끄기 / 다시 붙이기 |
 
 - **테마 계약** — `components/landing/hero/campfire/types.ts`의 `FireTheme`
   - `palette`: 타이틀 그라디언트·글로우·배경 색 (히어로에 CSS 변수 `--title-from` 등으로 주입)
-  - `createRenderer()`: `FireRenderer` 생성 — `update`/`draw`(매 프레임), `hotZone`(글자가 타는 영역), `stoke`(불 클릭), `feed`(글자가 불에 들어감)
-- **새 테마 추가** — `themes/`에 파일을 만들고 `themes/index.ts`의 `fireThemes`에 등록 → `<HeroSection themeId="..." />`
-- 테마별 CSS 오버라이드는 `.hero-section[data-fire-theme='...']` 셀렉터로 작성
-
-인터랙션: 타이틀 글자에 마우스를 대거나 터치하면 떨어지고, 바닥에 쌓인 글자는 잡아서 던질 수 있습니다.
-불에 들어간 글자는 타면서 불을 키우고, 잠시 뒤 타이틀에 다시 살아납니다. 불을 클릭하면 불티가 튀고, 포인터를 휘저으면 불길이 흔들립니다.
+  - `letters`: 글자가 떨어지는 방식 (`knock: 'touch' | 'shoot'`, `draggable`, `item`)
+  - `createRenderer(host)`: `FireRenderer` 생성 — `update`/`draw`(매 프레임), `hotZone`(글자가 타는 영역, 없으면 null), `groundY`(글자가 놓이는 바닥), `tap`(히어로 클릭/탭), `feed`(글자가 불에 들어감). `host.shake()`로 화면을 흔들 수 있음
+- **새 테마 추가** — `themes/`에 파일을 만들고 `themes/index.ts`의 `fireThemes`에 등록 (등록 순서 = 캐러셀 순서)
+- 테마별 CSS(폰트, 커서 등)는 `.hero-section[data-fire-theme='...']` 셀렉터로 작성. 테마 폰트는 `app/layout.tsx`에서 `next/font`로 로드 (`--font-doom`, `--font-pixel`, preload 없음)
 
 ## 향후 확장 계획
 
