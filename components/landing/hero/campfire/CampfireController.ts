@@ -87,12 +87,18 @@ export class CampfireController {
   private resize() {
     const { canvas } = this.opts;
     const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (rect.width === this.width && rect.height === this.height && dpr === this.dpr) return;
     this.width = rect.width;
     this.height = rect.height;
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.dpr = dpr;
+    // Resizing wipes the canvas, and this runs after the frame was drawn — redraw now, or the
+    // browser paints an empty canvas. On mobile the height changes every frame while the
+    // toolbar collapses during a scroll, which made the fire vanish.
     canvas.width = Math.round(this.width * this.dpr);
     canvas.height = Math.round(this.height * this.dpr);
     this.renderer?.resize(this.width, this.height);
+    this.paint();
   }
 
   private start() {
@@ -118,11 +124,7 @@ export class CampfireController {
     const pointer = this.opts.pointer.sample(now);
     renderer.update({ time: this.time, dt, pointer, reducedMotion: this.reducedMotion.matches });
 
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;
-    ctx.clearRect(0, 0, this.width, this.height);
-    renderer.draw(ctx);
+    this.paint();
 
     const overFire = !!pointer && this.isInFire(pointer.x, pointer.y);
     if (overFire !== this.overFire) {
@@ -130,6 +132,16 @@ export class CampfireController {
       this.opts.surface.classList.toggle('is-over-fire', overFire);
     }
   };
+
+  private paint() {
+    const { ctx, renderer } = this;
+    if (!ctx || !renderer) return;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, this.width, this.height);
+    renderer.draw(ctx);
+  }
 
   private readonly host: FireHost = {
     shake: (strength) => {

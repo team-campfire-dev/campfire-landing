@@ -13,6 +13,8 @@ export class PointerTracker {
     surface.addEventListener('pointermove', this.onMove);
     surface.addEventListener('pointerdown', this.onMove);
     surface.addEventListener('pointerleave', this.onLeave);
+    surface.addEventListener('pointerup', this.onRelease);
+    surface.addEventListener('pointercancel', this.onRelease);
   }
 
   /** Current pointer, or null when it isn't over the hero. Velocity decays once the pointer stops. */
@@ -32,6 +34,8 @@ export class PointerTracker {
     this.surface.removeEventListener('pointermove', this.onMove);
     this.surface.removeEventListener('pointerdown', this.onMove);
     this.surface.removeEventListener('pointerleave', this.onLeave);
+    this.surface.removeEventListener('pointerup', this.onRelease);
+    this.surface.removeEventListener('pointercancel', this.onRelease);
   }
 
   private onMove = (e: PointerEvent) => {
@@ -48,6 +52,11 @@ export class PointerTracker {
     this.y = y;
     this.lastTime = e.timeStamp;
     this.inside = true;
+  };
+
+  // Touch has no hover: once the finger lifts, or the browser takes it over to scroll, it's gone.
+  private onRelease = (e: PointerEvent) => {
+    if (e.pointerType === 'touch') this.inside = false;
   };
 
   private onLeave = (e: PointerEvent) => {

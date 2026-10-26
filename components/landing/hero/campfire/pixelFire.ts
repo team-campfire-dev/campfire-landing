@@ -14,10 +14,20 @@ export class PixelFire {
     this.cells = new Uint8Array(width * height);
   }
 
+  /** Keeps the current flames, anchored to the bottom row, so a resize doesn't put the fire out. */
   resize(width: number, height: number) {
+    const old = this.cells;
+    const oldWidth = this.width;
+    const oldHeight = this.height;
     this.width = width;
     this.height = height;
     this.cells = new Uint8Array(width * height);
+    const rows = Math.min(height, oldHeight);
+    const cols = Math.min(width, oldWidth);
+    for (let r = 1; r <= rows; r++) {
+      const from = (oldHeight - r) * oldWidth;
+      this.cells.set(old.subarray(from, from + cols), (height - r) * width);
+    }
   }
 
   /** Sets the bottom row, which feeds the whole fire. */
