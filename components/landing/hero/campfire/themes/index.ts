@@ -2,6 +2,7 @@ import type { FireTheme } from '../types';
 import { asciiTheme } from './ascii';
 import { classicTheme } from './classic';
 import { doomTheme } from './doom';
+import { fluidTheme } from './fluid';
 import { forgeTheme } from './forge';
 import { marshmallowTheme } from './marshmallow';
 import { minecraftTheme, soulCampfireTheme } from './minecraft';
@@ -21,6 +22,7 @@ export const fireThemes = {
   'sweet-potato': sweetPotatoTheme,
   'outer-wilds': outerWildsTheme,
   oneshot: oneshotTheme,
+  fluid: fluidTheme,
 } satisfies Record<string, FireTheme>;
 
 export type FireThemeId = keyof typeof fireThemes;
