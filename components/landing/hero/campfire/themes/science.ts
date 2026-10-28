@@ -1,4 +1,4 @@
-import { noise1 } from '../noise';
+import { noise1, noise2 } from '../noise';
 import { seeded } from '../illustration';
 import type { FireFrame, FireRenderer, FireTap, FireTheme, HotZone } from '../types';
 import { fadeToPage } from './classic';
@@ -24,6 +24,35 @@ const ERASE = 255;
 
 const AMBIENT = 20;
 const TICK = 1 / 60;
+/** Furthest a liquid moves sideways in one tick, and how far it looks for somewhere lower. */
+const SPREAD = 6;
+const SEEK = 64;
+/** Gravity, in cells per tick per tick. */
+const ACCEL = 0.15;
+/**
+ * Top falling speed in cells per tick. Air drag lets heavy grains fall fastest, liquids a little
+ * slower, and ash flutter down slowly.
+ */
+const TERMINAL: Record<number, number> = { [SAND]: 3.5, [SALT]: 3.5, [WATER]: 2, [OIL]: 1.3, [ASH]: 0.3 };
+/** The four neighbours as (dx, dy) pairs; indexed rather than allocated in the hot loop. */
+const N4 = [1, 0, -1, 0, 0, 1, 0, -1];
+/** How much of its glow a cell keeps each frame, and how much fades outright (0..255 scale). */
+const GLOW_KEEP = 0.55;
+const GLOW_FADE = 4;
+
+/** Liquid colours: surface, just below it, and the deep bottom of a pool. */
+const WATER_TONES: [number, number, number][] = [
+  [150, 214, 255],
+  [62, 146, 228],
+  [22, 70, 160],
+];
+const OIL_TONES: [number, number, number][] = [
+  [190, 140, 70],
+  [120, 80, 34],
+  [62, 38, 14],
+];
+
+const isGas = (t: number) => t === SMOKE || t === STEAM;
 
 interface Element {
   symbol: string;
@@ -136,6 +165,14 @@ function ironColor(t: number): [number, number, number] {
 class SandLab implements FireRenderer {
   private readonly pix = document.createElement('canvas');
   private image: ImageData | null = null;
+  /**
+   * The fire layer: flames add their colour here, and every frame it blurs into its neighbours
+   * and fades a little, so separate flame cells merge into one soft, glowing fire.
+   */
+  private readonly glowCanvas = document.createElement('canvas');
+  private glowImage: ImageData | null = null;
+  private glow = [new Float32Array(1), new Float32Array(1), new Float32Array(1)];
+  private glowNext = new Float32Array(1);
 
   private width = 0;
   private height = 0;
@@ -150,7 +187,12 @@ class SandLab implements FireRenderer {
   private life = new Uint8Array(1);
   private shade = new Uint8Array(1);
   private temp = new Float32Array(1);
-  private stamp = new Uint8Array(1);
+  /** The tick each cell last moved on, so nothing moves twice in one tick. */
+  private stamp = new Uint32Array(1);
+  /** Falling speed along gravity, in cells per tick. */
+  private vel = new Float32Array(1);
+  /** How many cells of the same liquid sit above each cell, refreshed every frame for shading. */
+  private depth = new Uint8Array(1);
   private mark = 1;
   private ticks = 0;
   private acc = 0;
@@ -182,10 +224,17 @@ class SandLab implements FireRenderer {
     this.life = new Uint8Array(n);
     this.shade = new Uint8Array(n).map(() => (Math.random() * 255) | 0);
     this.temp = new Float32Array(n).fill(AMBIENT);
-    this.stamp = new Uint8Array(n);
+    this.stamp = new Uint32Array(n);
+    this.vel = new Float32Array(n);
+    this.depth = new Uint8Array(n);
     this.pix.width = this.gw;
     this.pix.height = this.gh;
     this.image = null;
+    this.glowCanvas.width = this.gw;
+    this.glowCanvas.height = this.gh;
+    this.glowImage = null;
+    this.glow = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
+    this.glowNext = new Float32Array(n);
     this.buildScene();
   }
 
@@ -290,6 +339,14 @@ class SandLab implements FireRenderer {
     ctx.save();
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this.pix, 0, 0, this.gw * this.cell, this.gh * this.cell);
+    if (this.view !== 'thermal') {
+      this.updateGlow();
+      ctx.imageSmoothingEnabled = true;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.drawImage(this.glowCanvas, 0, 0, this.gw * this.cell, this.gh * this.cell);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.imageSmoothingEnabled = false;
+    }
     if (this.view === 'night') {
       // Scanlines and grain, like an image intensifier.
       ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
@@ -316,6 +373,7 @@ class SandLab implements FireRenderer {
     this.type[i] = t;
     this.aux[i] = aux;
     this.life[i] = clamp(life, 0, 255);
+    this.vel[i] = 0;
     if (temp !== undefined) this.temp[i] = temp;
   }
 
@@ -336,6 +394,9 @@ class SandLab implements FireRenderer {
     const t = temp[i];
     temp[i] = temp[j];
     temp[j] = t;
+    const v = this.vel[i];
+    this.vel[i] = this.vel[j];
+    this.vel[j] = v;
     this.stamp[j] = this.mark;
   }
 
@@ -370,17 +431,25 @@ class SandLab implements FireRenderer {
     return true;
   }
 
-  /** Moves a gas cell into empty space at (x, y). */
+  /**
+   * Moves a gas cell to (x, y): into empty space, or past other gases — fire rises through smoke
+   * and steam, and smoke and steam mix — so nothing gets stuck under a layer of smoke.
+   */
   private drift(i: number, x: number, y: number) {
     if (!this.inside(x, y)) return false;
     const j = y * this.gw + x;
-    if (this.type[j] !== EMPTY) return false;
+    const target = this.type[j];
+    if (target !== EMPTY) {
+      if (!isGas(target) || this.stamp[j] === this.mark) return false;
+      if (this.type[i] !== FIRE && Math.random() > 0.3) return false;
+    }
     this.swap(i, j);
     return true;
   }
 
   private step() {
-    this.mark = this.mark === 1 ? 2 : 1;
+    // A fresh number every tick: reusing two values would leave stale stamps that freeze cells.
+    this.mark++;
     const flip = (this.ticks++ & 1) === 1;
     const { gw, gh, gx, gy } = this;
     if (gx === 0) {
@@ -396,6 +465,7 @@ class SandLab implements FireRenderer {
       }
     }
     if (this.ticks % 2 === 0) this.diffuse();
+    this.spreadGlow();
   }
 
   private update1(x: number, y: number) {
@@ -414,9 +484,16 @@ class SandLab implements FireRenderer {
       case SAND:
       case SALT:
       case ASH: {
+        // Salt that gets hot enough flares off as coloured flame.
+        if (t === SALT && this.temp[i] > 450 && Math.random() < 0.004) {
+          this.vaporize(i);
+          return;
+        }
         if (weightless) return;
         const w = this.density(t);
-        if (this.sink(i, x + gx, y + gy, w)) return;
+        if (this.fall(i, x, y, t)) return;
+        // Ash flutters as it settles.
+        if (t === ASH && Math.random() < 0.5) return;
         if (this.sink(i, x + gx + px * side, y + gy + py * side, w)) return;
         this.sink(i, x + gx - px * side, y + gy - py * side, w);
         return;
@@ -436,10 +513,26 @@ class SandLab implements FireRenderer {
           return;
         }
         const w = this.density(t);
-        if (this.sink(i, x + gx, y + gy, w)) return;
+        if (this.fall(i, x, y, t)) return;
         if (this.sink(i, x + gx + px * side, y + gy + py * side, w)) return;
-        if (this.sink(i, x + px * side, y + py * side, w)) return;
-        this.sink(i, x - px * side, y - py * side, w);
+        if (this.sink(i, x + gx - px * side, y + gy - py * side, w)) return;
+        // Sideways only toward somewhere lower — the nearest drop, keeping the way it was already
+        // going (remembered in aux) on a tie. With nowhere lower to go, the surface is level and
+        // the water rests instead of sloshing back and forth.
+        const dir = this.aux[i] === 1 ? 1 : this.aux[i] === 2 ? -1 : side;
+        const ahead = this.seekDrop(x, y, w, px * dir, py * dir);
+        const behind = this.seekDrop(x, y, w, -px * dir, -py * dir);
+        const go = ahead && (!behind || ahead <= behind) ? dir : behind ? -dir : 0;
+        if (go && this.flow(i, x, y, w, px * go, py * go, go === dir ? ahead : behind)) return;
+        this.aux[i] = 0;
+        // A lone droplet on the surface rolls over to join the nearest water beside it, so the
+        // surface settles into one line instead of a scatter of bumps.
+        if (this.density(this.at(x + px, y + py)) < w && this.density(this.at(x - px, y - py)) < w) {
+          const right = this.seekSame(x, y, t, px, py);
+          const left = this.seekSame(x, y, t, -px, -py);
+          const toward = right && (!left || right < left || (right === left && side > 0)) ? 1 : left ? -1 : 0;
+          if (toward) this.sink(i, x + px * toward, y + py * toward, w);
+        }
         return;
       }
       case WOOD: {
@@ -450,10 +543,17 @@ class SandLab implements FireRenderer {
         this.temp[i] = 750;
         // The bed that keeps the campfire going.
         if (Math.random() < 0.5) {
-          const [ux, uy] = weightless ? this.randomDir() : [-gx, -gy];
+          const k = (Math.random() * 4) | 0;
+          const ux = weightless ? N4[k * 2] : -gx;
+          const uy = weightless ? N4[k * 2 + 1] : -gy;
           const nx = x + ux + (Math.random() < 0.3 ? side : 0);
           const ny = y + uy;
-          if (this.at(nx, ny) === EMPTY) this.set(ny * this.gw + nx, FIRE, 0, 22 + Math.random() * 34, 900);
+          const above = this.at(nx, ny);
+          const j = ny * this.gw + nx;
+          // Smoke sitting on the coals doesn't smother them; the new flame takes its place.
+          if (above === EMPTY || isGas(above)) this.set(j, FIRE, 0, 22 + Math.random() * 34, 900);
+          // A salt poured on the coals burns off in its own colour instead of putting them out.
+          else if (above === SALT && Math.random() < 0.2) this.vaporize(j);
         }
         return;
       }
@@ -470,7 +570,9 @@ class SandLab implements FireRenderer {
         }
         this.life[i]--;
         if (Math.random() < 0.4) return;
-        const [ux, uy] = weightless ? this.randomDir() : [-gx, -gy];
+        const k = (Math.random() * 4) | 0;
+        const ux = weightless ? N4[k * 2] : -gx;
+        const uy = weightless ? N4[k * 2 + 1] : -gy;
         if (this.drift(i, x + ux, y + uy)) return;
         if (this.drift(i, x + ux + px * side, y + uy + py * side)) return;
         this.drift(i, x + px * side, y + py * side);
@@ -484,14 +586,14 @@ class SandLab implements FireRenderer {
     const { gw, gx, gy } = this;
     this.temp[i] = 900;
     if (this.life[i] <= 1) {
-      this.set(i, Math.random() < 0.35 ? SMOKE : EMPTY, 0, 60 + Math.random() * 100);
+      this.set(i, Math.random() < 0.2 ? SMOKE : EMPTY, 0, 40 + Math.random() * 70);
       return;
     }
     // Without convection to carry heat away, a flame lingers.
     if (!weightless || Math.random() < 0.5) this.life[i]--;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx = x + dx;
-      const ny = y + dy;
+    for (let d = 0; d < 8; d += 2) {
+      const nx = x + N4[d];
+      const ny = y + N4[d + 1];
       if (!this.inside(nx, ny)) continue;
       const j = ny * gw + nx;
       const n = this.type[j];
@@ -512,8 +614,8 @@ class SandLab implements FireRenderer {
     // Flames rise against gravity and flicker sideways; weightless, they just spread a little.
     if (weightless) {
       if (Math.random() < 0.5) {
-        const [dx, dy] = this.randomDir();
-        this.drift(i, x + dx, y + dy);
+        const k = (Math.random() * 4) | 0;
+        this.drift(i, x + N4[k * 2], y + N4[k * 2 + 1]);
       }
       return;
     }
@@ -526,9 +628,86 @@ class SandLab implements FireRenderer {
     }
   }
 
-  private randomDir(): [number, number] {
-    const k = (Math.random() * 4) | 0;
-    return ([[1, 0], [-1, 0], [0, 1], [0, -1]] as [number, number][])[k];
+  /**
+   * Falls straight along gravity, speeding up each tick toward the material's top speed and
+   * moving several cells at once when fast. Through a liquid it slows to a crawl. Returns false
+   * when the way down is blocked, so the caller can slide or spread instead.
+   */
+  private fall(i: number, x: number, y: number, t: number) {
+    const { gx, gy, gw } = this;
+    const w = this.density(t);
+    if (!this.inside(x + gx, y + gy)) return false;
+    const below = (y + gy) * gw + x + gx;
+    if (this.stamp[below] === this.mark || this.density(this.type[below]) >= w) {
+      this.vel[i] = 0;
+      return false;
+    }
+    const v = Math.min(this.vel[i] + ACCEL, TERMINAL[t] ?? 1);
+    // Whole cells this tick, with the fraction carried by chance.
+    const steps = Math.floor(v) + (Math.random() < v % 1 ? 1 : 0);
+    let ci = i;
+    let cx = x;
+    let cy = y;
+    let speed = v;
+    for (let k = 0; k < steps; k++) {
+      const nx = cx + gx;
+      const ny = cy + gy;
+      if (!this.inside(nx, ny)) break;
+      const j = ny * gw + nx;
+      const n = this.type[j];
+      if (this.stamp[j] === this.mark || this.density(n) >= w) break;
+      // Pushing through a liquid: drag holds it to a slow sink.
+      const thick = n !== EMPTY && !isGas(n);
+      if (thick) speed = Math.min(speed, 0.5);
+      if (thick && Math.random() < 0.5) break;
+      this.swap(ci, j);
+      ci = j;
+      cx = nx;
+      cy = ny;
+      if (thick) break;
+    }
+    this.vel[ci] = speed;
+    return true;
+  }
+
+  /** How far along (dx, dy) the nearest open cell with a drop beneath it is, within SEEK; 0 if none. */
+  private seekDrop(x: number, y: number, weight: number, dx: number, dy: number) {
+    for (let k = 1; k <= SEEK; k++) {
+      const nx = x + dx * k;
+      const ny = y + dy * k;
+      if (!this.inside(nx, ny) || this.density(this.type[ny * this.gw + nx]) >= weight) return 0;
+      if (this.density(this.at(nx + this.gx, ny + this.gy)) < weight) return k;
+    }
+    return 0;
+  }
+
+  /** How far along (dx, dy), through open cells, the nearest cell of liquid `t` is, within SEEK; 0 if none. */
+  private seekSame(x: number, y: number, t: number, dx: number, dy: number) {
+    const w = this.density(t);
+    for (let k = 1; k <= SEEK; k++) {
+      const n = this.at(x + dx * k, y + dy * k);
+      if (n === t) return k;
+      if (this.density(n) >= w) return 0;
+    }
+    return 0;
+  }
+
+  /** Moves a liquid up to SPREAD cells along (dx, dy) toward a drop `limit` cells away. */
+  private flow(i: number, x: number, y: number, weight: number, dx: number, dy: number, limit: number) {
+    let reach = 0;
+    for (let k = 1; k <= Math.min(SPREAD, limit); k++) {
+      const nx = x + dx * k;
+      const ny = y + dy * k;
+      const j = ny * this.gw + nx;
+      if (this.stamp[j] === this.mark || this.density(this.type[j]) >= weight) break;
+      reach = k;
+    }
+    if (!reach) return false;
+    const j = (y + dy * reach) * this.gw + (x + dx * reach);
+    this.swap(i, j);
+    // Remember which way it went along the surface (aux 1 or 2), so it keeps going that way.
+    this.aux[j] = dy * this.gx - dx * this.gy > 0 ? 1 : 2;
+    return true;
   }
 
   /** Heat spreads between neighbouring cells and leaks away into the air. */
@@ -567,6 +746,13 @@ class SandLab implements FireRenderer {
         else this.set(i, m, tool.element ?? 0, 0, AMBIENT);
       }
     }
+  }
+
+  /** Turns a salt cell into a flame of its colour, and names the element now and then. */
+  private vaporize(i: number) {
+    const e = this.aux[i];
+    this.set(i, FIRE, e, 40 + Math.random() * 50, 900);
+    if (Math.random() < 0.05) this.read(e);
   }
 
   private read(e: number) {
@@ -632,6 +818,8 @@ class SandLab implements FireRenderer {
     const data = this.image.data;
     const { type, aux, life, shade, temp, view } = this;
     const weightless = this.gx === 0 && this.gy === 0;
+    this.measureDepth();
+    const { depth, gw, time } = this;
     for (let i = 0; i < type.length; i++) {
       const o = i * 4;
       const t = type[i];
@@ -663,16 +851,26 @@ class SandLab implements FireRenderer {
           b = 98 + v * 20;
           break;
         case WATER:
-          r = 40 + v * 20;
-          gg = 110 + v * 30;
-          b = 210 + v * 30;
-          a = 225;
+        case OIL: {
+          // A bright line at the surface, darkening with depth, with a slow ripple running through.
+          const [top, mid, deep] = t === WATER ? WATER_TONES : OIL_TONES;
+          const d = depth[i];
+          const ripple = noise2((i % gw) * 0.18 + time * 0.7, ((i / gw) | 0) * 0.3 - time * 0.4) - 0.5;
+          if (d === 0) {
+            [r, gg, b] = top;
+          } else {
+            const k = Math.min(1, (d - 1) / 16);
+            r = mid[0] + (deep[0] - mid[0]) * k;
+            gg = mid[1] + (deep[1] - mid[1]) * k;
+            b = mid[2] + (deep[2] - mid[2]) * k;
+          }
+          const lift = ripple * (d === 0 ? 20 : 30) * (1 - Math.min(1, d / 24) * 0.5);
+          r += lift;
+          gg += lift;
+          b += lift;
+          a = t === WATER ? 232 : 245;
           break;
-        case OIL:
-          r = 92 + v * 20;
-          gg = 62 + v * 14;
-          b = 28 + v * 10;
-          break;
+        }
         case WOOD:
           r = 118 + v * 30;
           gg = 74 + v * 20;
@@ -743,6 +941,97 @@ class SandLab implements FireRenderer {
       data[o + 3] = a;
     }
     g.putImageData(this.image, 0, 0);
+  }
+
+  /**
+   * Counts, for every water or oil cell, how many cells of the same liquid lie directly above it
+   * (against gravity; "above" is up when weightless), so pools shade from surface to bottom.
+   */
+  private measureDepth() {
+    const { gw, gh, type, depth } = this;
+    const gx = this.gx;
+    const gy = this.gx === 0 && this.gy === 0 ? 1 : this.gy;
+    const lines = gx === 0 ? gw : gh;
+    const length = gx === 0 ? gh : gw;
+    for (let line = 0; line < lines; line++) {
+      let run = 0;
+      let last = EMPTY;
+      for (let step = 0; step < length; step++) {
+        // Walk each column (or row) from the side gravity pulls away from.
+        const along = (gx === 0 ? gy : gx) > 0 ? step : length - 1 - step;
+        const i = gx === 0 ? along * gw + line : line * gw + along;
+        const t = type[i];
+        if (t === WATER || t === OIL) {
+          run = t === last ? run + 1 : 0;
+          depth[i] = Math.min(255, run);
+        }
+        last = t;
+      }
+    }
+  }
+
+  /** Adds this tick's flames to the fire layer, then blurs and fades it. */
+  private spreadGlow() {
+    const { gw, gh, type, aux, life, glow } = this;
+    const weightless = this.gx === 0 && this.gy === 0;
+    for (let i = 0; i < type.length; i++) {
+      if (type[i] !== FIRE && type[i] !== COAL) continue;
+      let r: number;
+      let gg: number;
+      let b: number;
+      const tint = ELEMENTS[aux[i]];
+      if (type[i] === COAL) [r, gg, b] = [90, 30, 6];
+      else if (tint) [r, gg, b] = hexRgb(tint.flame);
+      else if (weightless) [r, gg, b] = [60, 130, 255];
+      else {
+        const k = clamp(life[i] / 50, 0, 1);
+        [r, gg, b] = [255, 90 + 120 * k, 20 + 60 * k];
+      }
+      const amount = type[i] === COAL ? 0.03 : 0.1;
+      glow[0][i] += r * amount;
+      glow[1][i] += gg * amount;
+      glow[2][i] += b * amount;
+    }
+    const next = this.glowNext;
+    for (const channel of glow) {
+      for (let y = 0; y < gh; y++) {
+        for (let x = 0; x < gw; x++) {
+          const i = y * gw + x;
+          const l = x > 0 ? channel[i - 1] : 0;
+          const rr = x < gw - 1 ? channel[i + 1] : 0;
+          const u = y > 0 ? channel[i - gw] : 0;
+          const d = y < gh - 1 ? channel[i + gw] : 0;
+          next[i] = Math.max(0, channel[i] * GLOW_KEEP + (l + rr + u + d) * 0.25 * (1 - GLOW_KEEP) - GLOW_FADE);
+        }
+      }
+      channel.set(next);
+    }
+  }
+
+  /** Paints the fire layer into its canvas, to be laid over the cells additively. */
+  private updateGlow() {
+    const g = this.glowCanvas.getContext('2d');
+    if (!g) return;
+    const { gw, gh, type, glow, view } = this;
+    this.glowImage ??= g.createImageData(gw, gh);
+    const data = this.glowImage.data;
+    for (let i = 0; i < type.length; i++) {
+      const o = i * 4;
+      let r = Math.min(255, glow[0][i]);
+      let gg = Math.min(255, glow[1][i]);
+      let b = Math.min(255, glow[2][i]);
+      if (view === 'night') {
+        const lum = 0.3 * r + 0.59 * gg + 0.11 * b;
+        r = lum * 0.25;
+        gg = lum;
+        b = lum * 0.3;
+      }
+      data[o] = r;
+      data[o + 1] = gg;
+      data[o + 2] = b;
+      data[o + 3] = Math.max(r, gg, b);
+    }
+    g.putImageData(this.glowImage, 0, 0);
   }
 
   /** The flame-test read-out by the fire, and the temperature under the pointer in thermal view. */
@@ -823,7 +1112,11 @@ class SandLab implements FireRenderer {
     const tool = TOOLS[index];
     if (tool.kind === 'material') this.tool = index;
     else if (tool.kind === 'view') this.view = VIEWS[(VIEWS.indexOf(this.view) + 1) % VIEWS.length];
-    else if (tool.gravity) [this.gx, this.gy] = tool.gravity;
+    else if (tool.gravity) {
+      [this.gx, this.gy] = tool.gravity;
+      // Everything starts falling afresh in the new direction.
+      this.vel.fill(0);
+    }
   }
 
   private drawToolbar(ctx: CanvasRenderingContext2D) {
