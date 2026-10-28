@@ -76,7 +76,7 @@ export interface LetterHeat {
 
 /** How title letters react in a theme. */
 export interface LetterBehavior {
-  /** `touch`: hovering or touching knocks a letter loose. `shoot`: clicking/tapping blasts it off. */
+  /** `touch`: pressing a letter pulls it loose into the hand. `shoot`: clicking/tapping blasts it off. */
   knock: 'touch' | 'shoot';
   /** Fallen letters can be picked up and thrown. */
   draggable: boolean;
