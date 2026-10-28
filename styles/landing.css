@@ -410,6 +410,29 @@
     transform-origin: top center;
 }
 
+/* ===== Theme: Forge ===== */
+.hero-section[data-fire-theme='forge'] :is(.hero-title, .title-letter-body) {
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+/* Cold steel; as --heat rises the letter glows dull red, then orange, then yellow-white. */
+.hero-section[data-fire-theme='forge'] :is(.hero-letter, .title-letter-body) {
+    --forge-orange: color-mix(in srgb, #ff7a1a clamp(0%, calc((var(--heat, 0) - 0.15) / 0.35 * 100%), 100%), #a81e08);
+    --forge-hot: color-mix(in srgb, #fff0a8 clamp(0%, calc((var(--heat, 0) - 0.5) / 0.4 * 100%), 100%), var(--forge-orange));
+    background-image: linear-gradient(180deg, #f3f5f7 0%, #aab3bb 45%, #59636c 100%);
+    -webkit-text-fill-color: color-mix(in srgb, var(--forge-hot) clamp(0%, calc(var(--heat, 0) * 220%), 100%), transparent);
+}
+
+.hero-section[data-fire-theme='forge'] .hero-title {
+    filter: drop-shadow(0 3px 0 #1d1f22) drop-shadow(0 0 16px var(--title-glow));
+}
+
+.hero-section[data-fire-theme='forge'] .title-letter-body {
+    filter: drop-shadow(0 2px 0 #1d1f22) drop-shadow(0 0 calc(var(--heat, 0) * 18px) rgba(255, 100, 20, 0.9));
+}
+
 /* ===== About Section ===== */
 .about-section {
     padding: 4rem 2rem;
