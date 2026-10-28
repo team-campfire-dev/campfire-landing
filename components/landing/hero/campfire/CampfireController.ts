@@ -128,7 +128,8 @@ export class CampfireController {
   private tick = (now: number) => {
     this.raf = requestAnimationFrame(this.tick);
     const { ctx, renderer } = this;
-    if (!ctx || !renderer) return;
+    // A hero with no size (hidden, or not laid out yet) has nothing to simulate or draw.
+    if (!ctx || !renderer || !this.width || !this.height) return;
 
     const dt = Math.min((now - this.last) / 1000, 0.05);
     this.last = now;
@@ -148,7 +149,7 @@ export class CampfireController {
 
   private paint() {
     const { ctx, renderer } = this;
-    if (!ctx || !renderer) return;
+    if (!ctx || !renderer || !this.width || !this.height) return;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
