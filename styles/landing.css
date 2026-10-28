@@ -433,6 +433,20 @@
     filter: drop-shadow(0 2px 0 #1d1f22) drop-shadow(0 0 calc(var(--heat, 0) * 18px) rgba(255, 100, 20, 0.9));
 }
 
+/* ===== Theme: OneShot ===== */
+.hero-section[data-fire-theme='oneshot'] :is(.hero-title, .title-letter-body) {
+    font-family: var(--font-pixel), monospace;
+    font-weight: 700;
+}
+
+.hero-section[data-fire-theme='oneshot'] .hero-title {
+    filter: drop-shadow(3px 3px 0 rgba(0, 0, 0, 0.7)) drop-shadow(0 0 16px var(--title-glow));
+}
+
+.hero-section[data-fire-theme='oneshot'] .title-letter-body {
+    filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.7));
+}
+
 /* ===== About Section ===== */
 .about-section {
     padding: 4rem 2rem;
