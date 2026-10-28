@@ -98,8 +98,8 @@ function blastFrom(x: number, y: number, cx: number, cy: number): Launch {
 }
 
 /**
- * Lets title letters be knocked out of the heading: they fall with gravity, bounce,
- * pile up, can be grabbed and thrown, and burn up when they land in the fire.
+ * Lets title letters be pulled out of the heading: once pressed (or shot) they fall with
+ * gravity, bounce, pile up, can be grabbed and thrown, and burn up when they land in the fire.
  * How they come loose and behave is set per theme (`LetterBehavior`).
  */
 export class LetterPhysics {
@@ -114,9 +114,7 @@ export class LetterPhysics {
   constructor(private readonly opts: LetterPhysicsOptions) {
     this.behavior = opts.behavior;
     opts.title.querySelectorAll<HTMLElement>('[data-letter]').forEach((span) => {
-      const onEnter = (e: PointerEvent) => {
-        if (this.behavior.knock === 'touch' && e.pointerType === 'mouse') this.release(span);
-      };
+      // Letters stay put under a passing pointer; pressing one pulls it out into the hand.
       const onDown = (e: PointerEvent) => {
         if (this.behavior.knock !== 'touch') return;
         this.release(span, this.behavior.draggable ? e : undefined);
@@ -127,11 +125,9 @@ export class LetterPhysics {
         const rect = this.local(span.getBoundingClientRect());
         this.release(span, undefined, blastFrom(p.x, p.y, rect.x, rect.y));
       };
-      span.addEventListener('pointerenter', onEnter);
       span.addEventListener('pointerdown', onDown);
       span.addEventListener('click', onClick);
       this.unbind.push(() => {
-        span.removeEventListener('pointerenter', onEnter);
         span.removeEventListener('pointerdown', onDown);
         span.removeEventListener('click', onClick);
         delete span.dataset.state;
@@ -256,29 +252,17 @@ export class LetterPhysics {
       if (body.state !== 'dragging' || e.pointerId !== body.pointerId) return;
       this.drop(body);
     };
-    const onEnter = (e: PointerEvent) => {
-      // Brushing a fallen letter with the mouse nudges it along.
-      if (this.behavior.knock !== 'touch' || e.pointerType !== 'mouse' || body.state !== 'flying') return;
-      const v = this.opts.pointer.sample();
-      if (!v || Math.hypot(v.vx, v.vy) < 150) return;
-      body.vx += clamp(v.vx * 0.5, -800, 800);
-      body.vy += Math.min(v.vy * 0.5, 0) - 220;
-      body.spin += rand(-5, 5);
-      body.timer = 0;
-    };
     el.addEventListener('pointerdown', onDown);
     el.addEventListener('click', onClick);
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerup', onUp);
     el.addEventListener('pointercancel', onUp);
-    el.addEventListener('pointerenter', onEnter);
     return () => {
       el.removeEventListener('pointerdown', onDown);
       el.removeEventListener('click', onClick);
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerup', onUp);
       el.removeEventListener('pointercancel', onUp);
-      el.removeEventListener('pointerenter', onEnter);
     };
   }
 
