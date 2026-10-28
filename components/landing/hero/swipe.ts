@@ -3,6 +3,8 @@ interface SwipeOptions {
   onSwipe(direction: 1 | -1): void;
   /** Live drag offset in px while swiping, 0 when released — for visual feedback. */
   onDrag(offset: number): void;
+  /** A press something else wants for its own drag (e.g. painting on the canvas); no swipe then. */
+  claimed?(e: PointerEvent): boolean;
 }
 
 const IGNORE = '[data-letter], .title-letter-body, a, button';
@@ -14,7 +16,7 @@ const FLICK_SPEED = 0.5; // px per ms
  * Horizontal swipe (touch or mouse drag) across `surface`. Vertical drags are left to the
  * page scroll, and the click that ends a swipe is swallowed so it doesn't count as a tap.
  */
-export function bindSwipe(surface: HTMLElement, { onSwipe, onDrag }: SwipeOptions) {
+export function bindSwipe(surface: HTMLElement, { onSwipe, onDrag, claimed }: SwipeOptions) {
   let start: { id: number; x: number; y: number; time: number } | null = null;
   let swiping = false;
   let swallowClick = false;
@@ -27,7 +29,7 @@ export function bindSwipe(surface: HTMLElement, { onSwipe, onDrag }: SwipeOption
 
   const onDown = (e: PointerEvent) => {
     if (start || (e.pointerType === 'mouse' && e.button !== 0)) return;
-    if ((e.target as Element).closest(IGNORE)) return;
+    if ((e.target as Element).closest(IGNORE) || claimed?.(e)) return;
     start = { id: e.pointerId, x: e.clientX, y: e.clientY, time: e.timeStamp };
   };
 

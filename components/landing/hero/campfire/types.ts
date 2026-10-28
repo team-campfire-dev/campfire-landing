@@ -11,6 +11,8 @@ export interface PointerSample {
   y: number;
   vx: number;
   vy: number;
+  /** Pressed down on the open hero (not on a letter, link or button). */
+  down: boolean;
 }
 
 export interface FireFrame {
@@ -56,8 +58,12 @@ export interface FireRenderer {
   /** Y where fallen letters come to rest at `x`; defaults to the bottom of the hero. */
   groundY?(x: number): number;
   tap(tap: FireTap): void;
-  /** Something (e.g. a title letter) was thrown into the fire. */
-  feed(x: number, y: number, fuel: number): void;
+  /** Something was thrown into the fire; `letter` is the title letter, if it was one. */
+  feed(x: number, y: number, fuel: number, letter?: string): void;
+  /** Direction and strength of gravity for fallen letters (1 = normal); defaults to straight down. */
+  gravity?(): { x: number; y: number };
+  /** A mouse drag starting here (canvas CSS px) is the renderer's, not the theme swipe's. */
+  claimsDrag?(x: number, y: number): boolean;
   dispose?(): void;
 }
 

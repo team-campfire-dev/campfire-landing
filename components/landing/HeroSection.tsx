@@ -104,7 +104,12 @@ export default function HeroSection({ themeId: defaultThemeId = DEFAULT_FIRE_THE
         el.style.opacity = offset ? String(1 - Math.min(Math.abs(offset) / 600, 0.5)) : '';
       }
     };
-    return bindSwipe(section, { onSwipe: changeTheme, onDrag: drag });
+    return bindSwipe(section, {
+      onSwipe: changeTheme,
+      onDrag: drag,
+      // Mouse drags the fire wants for itself (painting in the sandbox) don't switch themes.
+      claimed: (e) => e.pointerType === 'mouse' && !!campfireRef.current?.claimsDrag(e.clientX, e.clientY),
+    });
   }, [changeTheme]);
 
   const palette = {

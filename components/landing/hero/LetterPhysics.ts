@@ -4,7 +4,9 @@ import type { PointerTracker } from './PointerTracker';
 export interface FireTarget {
   /** Px from a point to the hot zone: 0 inside it, Infinity while nothing can burn. */
   fireDistance(x: number, y: number): number;
-  feed(x: number, y: number, fuel: number): void;
+  feed(x: number, y: number, fuel: number, letter?: string): void;
+  /** Gravity's direction and strength; null means straight down. */
+  gravity(): { x: number; y: number } | null;
   /** Where fallen letters rest at `x`; null means the bottom of the surface. */
   groundY(x: number): number | null;
 }
@@ -319,7 +321,7 @@ export class LetterPhysics {
     body.state = 'burning';
     body.timer = 0;
     body.el.classList.add('is-burning');
-    this.opts.fire.feed(body.x, body.y, 1);
+    this.opts.fire.feed(body.x, body.y, 1, body.el.textContent ?? undefined);
   }
 
   private fade(body: LetterBody) {
@@ -404,7 +406,10 @@ export class LetterPhysics {
         break;
       }
       case 'flying': {
-        body.vy += GRAVITY * (this.behavior.gravity ?? 1) * dt;
+        const pull = this.opts.fire.gravity() ?? { x: 0, y: 1 };
+        const g = GRAVITY * (this.behavior.gravity ?? 1);
+        body.vx += g * pull.x * dt;
+        body.vy += g * pull.y * dt;
         body.vx *= 1 - 0.25 * dt;
         body.x += body.vx * dt;
         body.y += body.vy * dt;
@@ -430,6 +435,17 @@ export class LetterPhysics {
         } else if (body.x + extentX > width) {
           body.x = width - extentX;
           body.vx = -Math.abs(body.vx) * 0.5;
+        }
+        if (body.y - extentY < 0) {
+          body.y = extentY;
+          body.vy = Math.abs(body.vy) * 0.5;
+        }
+        if (pull.y < 0.5) {
+          // Gravity pulling sideways, up or not at all: letters settle against walls or drift,
+          // and fade once they've been still for a while.
+          const still = Math.hypot(body.vx, body.vy) < 25;
+          body.timer = still ? body.timer + dt : 0;
+          if (body.timer > REST_SECONDS) this.fade(body);
         }
 
         body.grounded = body.y + extentY >= floor;
