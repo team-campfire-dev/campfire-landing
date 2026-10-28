@@ -71,8 +71,19 @@ export class CampfireController {
     return this.renderer?.groundY?.(x) ?? null;
   }
 
-  feed(x: number, y: number, fuel: number) {
-    this.renderer?.feed(x, y, fuel);
+  feed(x: number, y: number, fuel: number, letter?: string) {
+    this.renderer?.feed(x, y, fuel, letter);
+  }
+
+  /** Gravity for fallen letters, or null for the usual straight down. */
+  gravity() {
+    return this.renderer?.gravity?.() ?? null;
+  }
+
+  /** Whether a mouse drag starting at this client point belongs to the renderer. */
+  claimsDrag(clientX: number, clientY: number) {
+    const { x, y } = this.opts.pointer.toLocal(clientX, clientY);
+    return this.renderer?.claimsDrag?.(x, y) ?? false;
   }
 
   destroy() {

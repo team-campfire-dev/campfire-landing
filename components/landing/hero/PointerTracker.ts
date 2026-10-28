@@ -7,11 +7,12 @@ export class PointerTracker {
   private vx = 0;
   private vy = 0;
   private inside = false;
+  private down = false;
   private lastTime = 0;
 
   constructor(private readonly surface: HTMLElement) {
     surface.addEventListener('pointermove', this.onMove);
-    surface.addEventListener('pointerdown', this.onMove);
+    surface.addEventListener('pointerdown', this.onDown);
     surface.addEventListener('pointerleave', this.onLeave);
     surface.addEventListener('pointerup', this.onRelease);
     surface.addEventListener('pointercancel', this.onRelease);
@@ -22,7 +23,7 @@ export class PointerTracker {
     if (!this.inside) return null;
     const idle = Math.max(0, (now - this.lastTime) / 1000 - 0.05);
     const decay = Math.exp(-idle * 14);
-    return { x: this.x, y: this.y, vx: this.vx * decay, vy: this.vy * decay };
+    return { x: this.x, y: this.y, vx: this.vx * decay, vy: this.vy * decay, down: this.down };
   }
 
   toLocal(clientX: number, clientY: number) {
@@ -32,7 +33,7 @@ export class PointerTracker {
 
   destroy() {
     this.surface.removeEventListener('pointermove', this.onMove);
-    this.surface.removeEventListener('pointerdown', this.onMove);
+    this.surface.removeEventListener('pointerdown', this.onDown);
     this.surface.removeEventListener('pointerleave', this.onLeave);
     this.surface.removeEventListener('pointerup', this.onRelease);
     this.surface.removeEventListener('pointercancel', this.onRelease);
@@ -54,8 +55,14 @@ export class PointerTracker {
     this.inside = true;
   };
 
+  private onDown = (e: PointerEvent) => {
+    this.down = !(e.target as Element).closest('[data-letter], .title-letter-body, a, button');
+    this.onMove(e);
+  };
+
   // Touch has no hover: once the finger lifts, or the browser takes it over to scroll, it's gone.
   private onRelease = (e: PointerEvent) => {
+    this.down = false;
     if (e.pointerType === 'touch') this.inside = false;
   };
 
