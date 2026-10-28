@@ -2,6 +2,7 @@ import type { FireTheme } from '../types';
 import { asciiTheme } from './ascii';
 import { classicTheme } from './classic';
 import { doomTheme } from './doom';
+import { marshmallowTheme } from './marshmallow';
 import { minecraftTheme, soulCampfireTheme } from './minecraft';
 
 // Register new themes here — HeroSection picks them by id, the picker lists them in this order.
@@ -11,6 +12,7 @@ export const fireThemes = {
   minecraft: minecraftTheme,
   soul: soulCampfireTheme,
   ascii: asciiTheme,
+  marshmallow: marshmallowTheme,
 } satisfies Record<string, FireTheme>;
 
 export type FireThemeId = keyof typeof fireThemes;
