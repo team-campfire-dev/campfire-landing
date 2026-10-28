@@ -1,38 +1,41 @@
 import { noise1, noise2 } from '../noise';
+import {
+  Backdrop,
+  TongueFire,
+  blend,
+  drawEmbers,
+  glow,
+  pine,
+  placed,
+  ridge,
+  ridgeY,
+  seeded,
+  shade,
+  type Ember,
+} from '../illustration';
 import type { FireFrame, FireRenderer, FireTap, FireTheme, HotZone, PointerSample } from '../types';
 
-type RGB = [number, number, number];
-
-interface Flame {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  age: number;
-  life: number;
-  size: number;
-  cool: number;
+/** What a setting needs to know to draw around the fire. */
+export interface CampfireView {
+  width: number;
+  height: number;
+  scale: number;
+  /** Fire base. */
+  cx: number;
+  cy: number;
+  /** Fire brightness, 0 (out) to ~1.5 (roaring). */
+  light: number;
+  time: number;
 }
 
-interface Ember {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  age: number;
-  life: number;
-  size: number;
-  seed: number;
-}
-
-interface Smoke {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  age: number;
-  life: number;
-  size: number;
+/** The place the campfire burns in: everything but the fire, logs and stones. */
+export interface CampfireSetting {
+  /** Static scenery, painted once per resize. */
+  paint(ctx: CanvasRenderingContext2D, view: CampfireView): void;
+  /** Scenery that moves (stars, water), drawn over the static part every frame. */
+  animate?(ctx: CanvasRenderingContext2D, view: CampfireView): void;
+  /** Props that catch the firelight, drawn just before the fire. */
+  props?(ctx: CanvasRenderingContext2D, view: CampfireView): void;
 }
 
 interface Log {
@@ -51,34 +54,27 @@ interface Stone {
   tilt: number;
 }
 
-// Flame color over a particle's life: white-hot core → yellow → orange → deep red → gone.
-const FLAME_RAMP: Array<[number, RGB, number]> = [
-  [0, [255, 236, 190], 0.45],
-  [0.14, [255, 200, 92], 0.62],
-  [0.34, [255, 138, 34], 0.6],
-  [0.58, [224, 70, 14], 0.4],
-  [0.82, [130, 26, 8], 0.16],
-  [1, [48, 8, 4], 0],
-];
-const SPRITE_STEPS = 32;
-const SPRITE_SIZE = 64;
-const MAX_FLAMES = 650;
-const MAX_EMBERS = 240;
-const MAX_SMOKE = 36;
+const MAX_EMBERS = 160;
 
-// Scenery layout in "fire units" (multiplied by the scale), relative to the fire base.
+// Layout in "fire units" (multiplied by the scale), relative to the fire base.
 const LOGS: Log[] = [
-  { x1: -128, y1: 24, x2: 92, y2: -20, radius: 15 },
-  { x1: 128, y1: 24, x2: -92, y2: -20, radius: 15 },
+  { x1: -122, y1: 22, x2: 88, y2: -18, radius: 14 },
+  { x1: 122, y1: 22, x2: -88, y2: -18, radius: 14 },
 ];
-const STONES: Stone[] = [
-  { x: -150, y: 18, rx: 24, ry: 15, tilt: -0.2 },
-  { x: -112, y: 32, rx: 27, ry: 16, tilt: 0.1 },
-  { x: -64, y: 41, rx: 25, ry: 15, tilt: -0.05 },
-  { x: -14, y: 44, rx: 28, ry: 16, tilt: 0.08 },
-  { x: 38, y: 43, rx: 24, ry: 15, tilt: -0.1 },
-  { x: 88, y: 37, rx: 27, ry: 16, tilt: 0.12 },
-  { x: 134, y: 25, rx: 24, ry: 15, tilt: 0.2 },
+const BACK_STONES: Stone[] = [
+  { x: -96, y: -4, rx: 20, ry: 12, tilt: 0.1 },
+  { x: -40, y: -10, rx: 22, ry: 12, tilt: -0.05 },
+  { x: 30, y: -10, rx: 21, ry: 12, tilt: 0.06 },
+  { x: 92, y: -4, rx: 20, ry: 12, tilt: -0.12 },
+];
+const FRONT_STONES: Stone[] = [
+  { x: -146, y: 16, rx: 24, ry: 15, tilt: -0.2 },
+  { x: -108, y: 31, rx: 27, ry: 16, tilt: 0.1 },
+  { x: -60, y: 40, rx: 25, ry: 15, tilt: -0.05 },
+  { x: -10, y: 43, rx: 28, ry: 16, tilt: 0.08 },
+  { x: 42, y: 42, rx: 24, ry: 15, tilt: -0.1 },
+  { x: 90, y: 35, rx: 27, ry: 16, tilt: 0.12 },
+  { x: 136, y: 22, rx: 24, ry: 15, tilt: 0.2 },
 ];
 
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
@@ -86,56 +82,32 @@ const rand = (min: number, max: number) => min + Math.random() * (max - min);
 const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
-function sampleRamp(t: number): [RGB, number] {
-  for (let i = 1; i < FLAME_RAMP.length; i++) {
-    const [t1, c1, a1] = FLAME_RAMP[i];
-    if (t <= t1) {
-      const [t0, c0, a0] = FLAME_RAMP[i - 1];
-      const k = (t - t0) / (t1 - t0);
-      return [
-        [c0[0] + (c1[0] - c0[0]) * k, c0[1] + (c1[1] - c0[1]) * k, c0[2] + (c1[2] - c0[2]) * k],
-        a0 + (a1 - a0) * k,
-      ];
-    }
+/** A lumpy stone outline around the origin. */
+function stonePath(stone: Stone, s: number, seed: number) {
+  const path = new Path2D();
+  const steps = 14;
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * Math.PI * 2;
+    const k = 1 + 0.12 * (noise2(seed, i * 0.7) - 0.5) * 2;
+    const x = Math.cos(a) * stone.rx * s * k;
+    // Flatter underneath, where it sits on the ground.
+    const y = Math.sin(a) * stone.ry * s * k * (Math.sin(a) > 0 ? 0.8 : 1);
+    if (i === 0) path.moveTo(x, y);
+    else path.lineTo(x, y);
   }
-  const last = FLAME_RAMP[FLAME_RAMP.length - 1];
-  return [last[1], last[2]];
+  path.closePath();
+  return placed(path, 0, 0, stone.tilt);
 }
 
-function makeSprite([r, g, b]: RGB, alpha: number) {
-  const canvas = document.createElement('canvas');
-  canvas.width = SPRITE_SIZE;
-  canvas.height = SPRITE_SIZE;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return canvas;
-  const half = SPRITE_SIZE / 2;
-  const grad = ctx.createRadialGradient(half, half, 0, half, half, half);
-  grad.addColorStop(0, `rgba(${r | 0},${g | 0},${b | 0},${alpha})`);
-  grad.addColorStop(0.4, `rgba(${r | 0},${g | 0},${b | 0},${alpha * 0.5})`);
-  grad.addColorStop(1, `rgba(${r | 0},${g | 0},${b | 0},0)`);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, SPRITE_SIZE, SPRITE_SIZE);
-  return canvas;
-}
-
-function repel(p: { x: number; y: number; vx: number; vy: number }, pointer: PointerSample | null, radius: number, force: number) {
-  if (!pointer) return;
-  const dx = p.x - pointer.x;
-  const dy = p.y - pointer.y;
-  const d2 = dx * dx + dy * dy;
-  if (d2 >= radius * radius) return;
-  const d = Math.sqrt(d2) || 1;
-  const f = (1 - d / radius) * force;
-  p.vx += (dx / d) * f;
-  p.vy += (dy / d) * f * 0.6;
-}
-
-class ClassicCampfire implements FireRenderer {
-  private readonly sprites: HTMLCanvasElement[];
-  private readonly smokeSprite: HTMLCanvasElement;
-  private flames: Flame[] = [];
+/**
+ * An illustrated campfire: flat-coloured flame tongues on crossed logs in a ring of stones,
+ * everything around it cel-shaded by the firelight. The surroundings come from a `CampfireSetting`.
+ */
+export class IllustratedCampfire implements FireRenderer {
+  private readonly fire = new TongueFire(9);
+  private readonly backdrop = new Backdrop();
   private embers: Ember[] = [];
-  private smoke: Smoke[] = [];
+  private stoneShapes: Path2D[] = [];
 
   private width = 0;
   private height = 0;
@@ -149,18 +121,9 @@ class ClassicCampfire implements FireRenderer {
   private flicker = 1;
   private wind = 0;
   private pointer: PointerSample | null = null;
-  private reducedMotion = false;
-  private flameDebt = 0;
   private emberDebt = 0;
-  private smokeDebt = 0;
 
-  constructor() {
-    this.sprites = Array.from({ length: SPRITE_STEPS }, (_, i) => {
-      const [rgb, alpha] = sampleRamp(i / (SPRITE_STEPS - 1));
-      return makeSprite(rgb, alpha);
-    });
-    this.smokeSprite = makeSprite([74, 66, 64], 1);
-  }
+  constructor(private readonly setting: CampfireSetting) {}
 
   resize(width: number, height: number) {
     this.width = width;
@@ -168,6 +131,8 @@ class ClassicCampfire implements FireRenderer {
     this.scale = clamp(Math.min(width * 1.4, height * 1.2) / 760, 0.6, 1.3);
     this.cx = width / 2;
     this.cy = height - 70 * this.scale;
+    this.stoneShapes = [...BACK_STONES, ...FRONT_STONES].map((stone, i) => stonePath(stone, this.scale, i * 3.3));
+    this.backdrop.paint(width, height, (ctx) => this.setting.paint(ctx, this.view()));
   }
 
   hotZone(): HotZone {
@@ -180,38 +145,26 @@ class ClassicCampfire implements FireRenderer {
     if (!onFire || onLetter) return;
     this.boost = Math.min(this.boost + 0.35, 2.6);
     const bx = clamp(x, this.cx - 70 * this.scale, this.cx + 70 * this.scale);
-    for (let i = 0; i < 28; i++) this.burstEmber(bx, this.cy - 30 * this.scale, 0.9);
+    for (let i = 0; i < 24; i++) this.burstEmber(bx, this.cy - 30 * this.scale, 0.9);
+    this.fire.burst(bx, this.cy - 60 * this.scale, 3);
   }
 
   feed(x: number, y: number, fuel: number) {
     this.boost = Math.min(this.boost + 0.9 * fuel, 2.6);
-    for (let i = 0; i < 50 * fuel; i++) this.burstEmber(x, y, 1.15);
-    for (let i = 0; i < 30 * fuel && this.flames.length < MAX_FLAMES; i++) {
-      this.flames.push({
-        x: x + gauss() * 18 * this.scale,
-        y: y + gauss() * 18 * this.scale,
-        vx: rand(-40, 40) * this.scale,
-        vy: -rand(60, 160) * this.scale,
-        age: 0,
-        life: rand(0.4, 0.8),
-        size: rand(24, 40) * this.scale,
-        cool: 0,
-      });
-    }
+    for (let i = 0; i < 40 * fuel; i++) this.burstEmber(x, y, 1.15);
+    this.fire.burst(x, Math.min(y, this.cy - 40 * this.scale), Math.round(6 * fuel));
   }
 
   update({ time, dt, pointer, reducedMotion }: FireFrame) {
     this.time = time;
     this.pointer = pointer;
-    this.reducedMotion = reducedMotion;
-
     this.ignition = Math.min(1, this.ignition + dt / 1.6);
     const lit = 1 - (1 - this.ignition) ** 3;
     this.boost *= Math.exp(-0.5 * dt);
-    this.flicker = 0.78 + 0.3 * noise1(time * 3.1) + 0.14 * noise1(time * 9.7 + 40);
+    this.flicker = 0.85 + 0.2 * noise1(time * 3.1) + 0.08 * noise1(time * 9.7 + 40);
 
     // Wind: slow ambient sway plus gusts from the pointer sweeping past the fire.
-    const ambient = (noise1(time * 0.35 + 90) - 0.5) * 0.45;
+    const ambient = (noise1(time * 0.35 + 90) - 0.5) * 0.4;
     if (pointer) {
       const dx = pointer.x - this.cx;
       const dy = pointer.y - (this.cy - 110 * this.scale);
@@ -219,138 +172,83 @@ class ClassicCampfire implements FireRenderer {
       this.wind += clamp(pointer.vx / 1500, -1.5, 1.5) * proximity * dt * 6;
     }
     this.wind += (ambient - this.wind) * Math.min(1, dt * 1.4);
-    this.wind = clamp(this.wind, -1.3, 1.3);
+    this.wind = clamp(this.wind, -1.2, 1.2);
 
+    const s = this.scale;
     const boost = Math.min(this.boost, 2);
-    this.flameDebt += (reducedMotion ? 160 : 250) * lit * (1 + 0.7 * boost) * this.flicker * dt;
-    while (this.flameDebt >= 1) {
-      this.flameDebt -= 1;
-      if (this.flames.length < MAX_FLAMES) this.spawnFlame(boost);
-    }
-    this.emberDebt += (reducedMotion ? 3 : 8) * lit * (1 + 2.5 * boost) * dt;
+    this.fire.place(
+      this.cx,
+      this.cy - 2 * s,
+      130 * s * (1 + 0.15 * boost),
+      200 * s * lit * this.flicker * (1 + 0.35 * boost),
+      this.wind * 0.8,
+    );
+    this.fire.update(reducedMotion ? dt * 0.5 : dt, reducedMotion ? time * 0.5 : time);
+
+    this.emberDebt += (reducedMotion ? 2 : 6) * lit * (1 + 2.5 * boost) * dt;
     while (this.emberDebt >= 1) {
       this.emberDebt -= 1;
-      this.spawnEmber();
+      this.pushEmber(this.cx + gauss() * 40 * s, this.cy - rand(30, 110) * s, rand(-30, 30) * s, -rand(80, 200) * s);
     }
-    this.smokeDebt += 4 * lit * dt;
-    while (this.smokeDebt >= 1) {
-      this.smokeDebt -= 1;
-      if (this.smoke.length < MAX_SMOKE) this.spawnSmoke(boost);
-    }
-
-    this.stepFlames(dt);
     this.stepEmbers(dt);
-    this.stepSmoke(dt);
   }
 
   draw(ctx: CanvasRenderingContext2D) {
-    const heat = (1 - (1 - this.ignition) ** 3) * this.flicker * (1 + 0.5 * Math.min(this.boost, 2));
-    this.drawGlow(ctx, heat);
-    this.drawSmoke(ctx);
-    for (const log of LOGS) this.drawLog(ctx, log, heat);
-    this.drawCoals(ctx, heat);
-    this.drawFlames(ctx);
-    this.drawStones(ctx, heat);
-    this.drawEmbers(ctx);
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
+    const lit = 1 - (1 - this.ignition) ** 3;
+    const light = lit * this.flicker * (1 + 0.35 * Math.min(this.boost, 2));
+    const view = this.view(light);
+    const s = this.scale;
+
+    this.backdrop.draw(ctx);
+    this.setting.animate?.(ctx, view);
+
+    // Firelight falling on the scene and pooling on the ground.
+    glow(ctx, this.cx, this.cy - 90 * s, 520 * s, [255, 120, 50], 0.2 * light);
+    ctx.save();
+    ctx.translate(this.cx, this.cy + 20 * s);
+    ctx.scale(1, 0.24);
+    glow(ctx, 0, 0, 300 * s, [255, 130, 60], 0.3 * light);
+    ctx.restore();
+
+    this.setting.props?.(ctx, view);
+    for (let i = 0; i < BACK_STONES.length; i++) this.drawStone(ctx, BACK_STONES[i], this.stoneShapes[i], light);
+    for (const log of LOGS) this.drawLog(ctx, log, light);
+    this.fire.draw(ctx);
+    for (let i = 0; i < FRONT_STONES.length; i++) {
+      this.drawStone(ctx, FRONT_STONES[i], this.stoneShapes[BACK_STONES.length + i], light);
+    }
+    drawEmbers(ctx, this.embers, this.time);
+    // Last, so the firelight doesn't leave a seam where the hero meets the page.
+    fadeToPage(ctx, this.width, this.height);
   }
 
-  // ---- spawning ----
-
-  private spawnFlame(boost: number) {
-    const s = this.scale;
-    const g = gauss();
-    const edge = Math.abs(g);
-    const tall = Math.random() < 0.18 ? 1.6 : 1;
-    const height = (0.8 + 0.3 * this.flicker) * (1 + 0.4 * boost) * tall;
-    this.flames.push({
-      x: this.cx + g * 64 * s * (1 + 0.2 * boost),
-      y: this.cy - rand(0, 14) * s,
-      vx: rand(-15, 15) * s,
-      vy: -rand(85, 150) * s * height,
-      age: 0,
-      life: rand(0.5, 0.95) * (1 - edge * 0.5) * Math.sqrt(height),
-      size: rand(20, 32) * s * (1 - edge * 0.35) * (1 + 0.2 * boost),
-      cool: Math.random() * 0.16,
-    });
-  }
-
-  private spawnEmber() {
-    const s = this.scale;
-    this.pushEmber(
-      this.cx + gauss() * 40 * s,
-      this.cy - rand(10, 70) * s,
-      rand(-0.3, 0.3) * 120 * s,
-      -rand(90, 240) * s,
-    );
+  private view(light = 0): CampfireView {
+    return {
+      width: this.width,
+      height: this.height,
+      scale: this.scale,
+      cx: this.cx,
+      cy: this.cy,
+      light,
+      time: this.time,
+    };
   }
 
   private burstEmber(x: number, y: number, power: number) {
-    const angle = -Math.PI / 2 + rand(-1.15, 1.15);
-    const speed = rand(150, 480) * this.scale * power;
+    const angle = -Math.PI / 2 + rand(-1.1, 1.1);
+    const speed = rand(150, 460) * this.scale * power;
     this.pushEmber(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed);
   }
 
   private pushEmber(x: number, y: number, vx: number, vy: number) {
     if (this.embers.length >= MAX_EMBERS) return;
-    this.embers.push({
-      x,
-      y,
-      vx,
-      vy,
-      age: 0,
-      life: rand(1.2, 3.4),
-      size: rand(1, 2.4) * Math.max(this.scale, 0.8),
-      seed: Math.random() * 100,
-    });
-  }
-
-  private spawnSmoke(boost: number) {
-    const s = this.scale;
-    this.smoke.push({
-      x: this.cx + gauss() * 30 * s,
-      y: this.cy - rand(140, 200) * s * (1 + 0.3 * boost),
-      vx: 0,
-      vy: -rand(22, 40) * s,
-      age: 0,
-      life: rand(3, 5),
-      size: rand(30, 48) * s,
-    });
-  }
-
-  // ---- simulation ----
-
-  private stepFlames(dt: number) {
-    const s = this.scale;
-    const turbulence = (this.reducedMotion ? 450 : 900) * s;
-    const drag = Math.max(0, 1 - 2.2 * dt);
-    for (let i = this.flames.length - 1; i >= 0; i--) {
-      const p = this.flames[i];
-      p.age += dt;
-      if (p.age >= p.life) {
-        this.flames[i] = this.flames[this.flames.length - 1];
-        this.flames.pop();
-        continue;
-      }
-      const t = p.age / p.life;
-      const rise = Math.max(0, this.cy - p.y);
-      // Particles converge on a wavering axis, which is what shapes them into flame tongues.
-      const sway = (noise1(this.time * 1.3 + rise * 0.004) - 0.5) * 34 * s * (rise / (150 * s));
-      const axis = this.cx + this.wind * rise * 0.55 + sway;
-      p.vy -= 270 * s * dt;
-      p.vx += (axis - p.x) * 3 * dt;
-      p.vx += (noise2(p.x * 0.011, p.y * 0.009 + this.time * 2.2) - 0.5) * turbulence * dt * (0.35 + t);
-      repel(p, this.pointer, 75 * s, 2600 * s * dt);
-      p.vx *= drag;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-    }
+    this.embers.push({ x, y, vx, vy, age: 0, life: rand(1.2, 3), size: rand(1.1, 2.2) * Math.max(this.scale, 0.8), seed: Math.random() * 100 });
   }
 
   private stepEmbers(dt: number) {
     const s = this.scale;
     const drag = Math.max(0, 1 - 0.7 * dt);
+    const p = this.pointer;
     for (let i = this.embers.length - 1; i >= 0; i--) {
       const e = this.embers[i];
       e.age += dt;
@@ -360,8 +258,19 @@ class ClassicCampfire implements FireRenderer {
         continue;
       }
       e.vy -= 40 * s * dt;
-      e.vx += (noise2(e.seed, this.time * 0.9) - 0.5) * 520 * s * dt + this.wind * 150 * s * dt;
-      repel(e, this.pointer, 90 * s, 4200 * s * dt);
+      e.vx += (noise2(e.seed, this.time * 0.9) - 0.5) * 480 * s * dt + this.wind * 150 * s * dt;
+      if (p) {
+        // Embers scatter away from the pointer.
+        const dx = e.x - p.x;
+        const dy = e.y - p.y;
+        const d = Math.hypot(dx, dy);
+        const r = 90 * s;
+        if (d < r && d > 0) {
+          const f = (1 - d / r) * 4200 * s * dt;
+          e.vx += (dx / d) * f;
+          e.vy += (dy / d) * f * 0.6;
+        }
+      }
       e.vx *= drag;
       e.vy *= drag;
       e.x += e.vx * dt;
@@ -369,64 +278,7 @@ class ClassicCampfire implements FireRenderer {
     }
   }
 
-  private stepSmoke(dt: number) {
-    const s = this.scale;
-    for (let i = this.smoke.length - 1; i >= 0; i--) {
-      const p = this.smoke[i];
-      p.age += dt;
-      if (p.age >= p.life) {
-        this.smoke[i] = this.smoke[this.smoke.length - 1];
-        this.smoke.pop();
-        continue;
-      }
-      p.vx += (this.wind * 40 * s - p.vx) * dt + (noise2(p.y * 0.01, this.time * 0.5) - 0.5) * 60 * s * dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-    }
-  }
-
-  // ---- drawing ----
-
-  private drawGlow(ctx: CanvasRenderingContext2D, heat: number) {
-    const s = this.scale;
-    const gy = this.cy - 70 * s;
-    const radius = 440 * s * (0.92 + 0.1 * this.flicker) * (1 + 0.12 * Math.min(this.boost, 2));
-    const a = (v: number) => Math.min(1, v * heat).toFixed(3);
-
-    ctx.globalCompositeOperation = 'lighter';
-    const glow = ctx.createRadialGradient(this.cx, gy, 0, this.cx, gy, radius);
-    glow.addColorStop(0, `rgba(255,120,40,${a(0.26)})`);
-    glow.addColorStop(0.35, `rgba(255,80,20,${a(0.1)})`);
-    glow.addColorStop(1, 'rgba(255,60,10,0)');
-    ctx.fillStyle = glow;
-    ctx.fillRect(this.cx - radius, gy - radius, radius * 2, radius * 2);
-
-    // Light pooled on the ground around the fire.
-    ctx.save();
-    ctx.translate(this.cx, this.cy + 26 * s);
-    ctx.scale(1, 0.22);
-    const ground = ctx.createRadialGradient(0, 0, 0, 0, 0, 260 * s);
-    ground.addColorStop(0, `rgba(255,120,45,${a(0.32)})`);
-    ground.addColorStop(1, 'rgba(255,90,30,0)');
-    ctx.fillStyle = ground;
-    ctx.beginPath();
-    ctx.arc(0, 0, 260 * s, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  private drawSmoke(ctx: CanvasRenderingContext2D) {
-    ctx.globalCompositeOperation = 'source-over';
-    for (const p of this.smoke) {
-      const t = p.age / p.life;
-      const r = p.size * (1 + 2 * t);
-      ctx.globalAlpha = 0.07 * Math.sin(Math.PI * t);
-      ctx.drawImage(this.smokeSprite, p.x - r, p.y - r, r * 2, r * 2);
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  private drawLog(ctx: CanvasRenderingContext2D, log: Log, heat: number) {
+  private drawLog(ctx: CanvasRenderingContext2D, log: Log, light: number) {
     const s = this.scale;
     const x1 = this.cx + log.x1 * s;
     const y1 = this.cy + log.y1 * s;
@@ -434,126 +286,165 @@ class ClassicCampfire implements FireRenderer {
     const y2 = this.cy + log.y2 * s;
     const r = log.radius * s;
     const length = Math.hypot(x2 - x1, y2 - y1);
-    const lit = clamp(heat, 0, 1.6);
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const warm = clamp(light, 0, 1.2);
 
+    const body = new Path2D();
+    body.roundRect(0, -r, length, r * 2, r * 0.7);
+    const shape = placed(body, x1, y1, angle);
+    shade(
+      ctx,
+      shape,
+      { base: '#3d2a22', shadow: '#1f150f', light: blend('#55402f', '#f39a55', warm) },
+      { x: this.cx - (x1 + x2) / 2, y: this.cy - 80 * s - (y1 + y2) / 2 },
+      3.5 * s,
+      7 * s,
+    );
+
+    // Bark grooves, then the glowing charred end in the fire.
     ctx.save();
-    ctx.globalCompositeOperation = 'source-over';
+    ctx.clip(shape);
     ctx.translate(x1, y1);
-    ctx.rotate(Math.atan2(y2 - y1, x2 - x1));
-
-    const bark = ctx.createLinearGradient(0, -r, 0, r);
-    bark.addColorStop(0, `rgb(${(70 + 70 * lit) | 0},${(38 + 30 * lit) | 0},${(20 + 8 * lit) | 0})`);
-    bark.addColorStop(0.45, '#3a2215');
-    bark.addColorStop(1, '#140b06');
-    ctx.fillStyle = bark;
-    ctx.beginPath();
-    ctx.roundRect(0, -r, length, r * 2, r * 0.6);
-    ctx.fill();
-
-    ctx.strokeStyle = 'rgba(10,5,2,0.55)';
-    ctx.lineWidth = Math.max(1, 1.2 * s);
-    for (const [from, to, off] of [[0.12, 0.5, -0.35], [0.3, 0.8, 0.15], [0.55, 0.95, 0.5]]) {
+    ctx.rotate(angle);
+    ctx.strokeStyle = 'rgba(20, 12, 8, 0.5)';
+    ctx.lineWidth = Math.max(1, 1.4 * s);
+    for (const [from, to, off] of [[0.15, 0.5, -0.3], [0.32, 0.78, 0.2], [0.55, 0.9, -0.05]]) {
       ctx.beginPath();
       ctx.moveTo(length * from, r * off);
-      ctx.lineTo(length * to, r * off + r * 0.08);
+      ctx.lineTo(length * to, r * off);
       ctx.stroke();
     }
-
-    // Charred end glowing where it sits in the fire.
-    ctx.globalCompositeOperation = 'lighter';
-    const ember = ctx.createLinearGradient(length * 0.45, 0, length, 0);
-    ember.addColorStop(0, 'rgba(255,80,10,0)');
-    ember.addColorStop(1, `rgba(255,90,20,${Math.min(1, 0.45 * lit).toFixed(3)})`);
-    ctx.fillStyle = ember;
-    ctx.beginPath();
-    ctx.roundRect(length * 0.45, -r, length * 0.55, r * 2, r * 0.6);
-    ctx.fill();
+    ctx.fillStyle = `rgba(255, 96, 34, ${(0.55 * clamp(light, 0, 1.2)).toFixed(3)})`;
+    ctx.fillRect(length * 0.72, -r, length * 0.3, r * 2);
+    ctx.restore();
 
     // Cut end facing the viewer.
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = '#5a3a22';
+    ctx.save();
+    ctx.translate(x1, y1);
+    ctx.rotate(angle);
+    ctx.fillStyle = '#9c6a43';
     ctx.beginPath();
-    ctx.ellipse(0, 0, r * 0.42, r, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, r * 0.45, r, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#8a6240';
-    ctx.lineWidth = Math.max(1, 1.4 * s);
+    ctx.strokeStyle = '#6e4529';
+    ctx.lineWidth = Math.max(1, 1.3 * s);
     ctx.beginPath();
-    ctx.ellipse(0, 0, r * 0.26, r * 0.62, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, r * 0.26, r * 0.6, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
 
-  private drawCoals(ctx: CanvasRenderingContext2D, heat: number) {
+  private drawStone(ctx: CanvasRenderingContext2D, stone: Stone, shape: Path2D, light: number) {
     const s = this.scale;
-    ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 9; i++) {
-      const x = this.cx + (i - 4) * 15 * s + Math.sin(i * 7.3) * 6 * s;
-      const y = this.cy + 6 * s + Math.cos(i * 3.1) * 5 * s;
-      const pulse = 0.45 + 0.55 * noise1(this.time * 1.7 + i * 11);
-      const r = (10 + (i % 3) * 3) * s;
-      ctx.globalAlpha = clamp(pulse * heat * 0.8, 0, 1);
-      ctx.drawImage(this.sprites[12], x - r, y - r, r * 2, r * 2);
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  private drawFlames(ctx: CanvasRenderingContext2D) {
-    ctx.globalCompositeOperation = 'lighter';
-    const last = SPRITE_STEPS - 1;
-    for (const p of this.flames) {
-      const t = p.age / p.life;
-      const r = p.size * (t < 0.2 ? 0.7 + 1.5 * t : 1 - 0.75 * ((t - 0.2) / 0.8));
-      const sprite = this.sprites[Math.min(last, ((t + p.cool) * last) | 0)];
-      ctx.globalAlpha = Math.min(1, p.age / 0.15) * 0.62;
-      ctx.drawImage(sprite, p.x - r, p.y - r * 1.35, r * 2, r * 2.7);
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  private drawStones(ctx: CanvasRenderingContext2D, heat: number) {
-    const s = this.scale;
-    const lit = clamp(heat, 0, 1.6);
-    ctx.globalCompositeOperation = 'source-over';
-    for (const stone of STONES) {
-      const x = this.cx + stone.x * s;
-      const y = this.cy + stone.y * s;
-      const rx = stone.rx * s;
-      const ry = stone.ry * s;
-      // Stones nearer the center catch more firelight.
-      const near = 1 - Math.abs(stone.x) / 220;
-      const fill = ctx.createLinearGradient(x, y - ry, x, y + ry);
-      fill.addColorStop(0, `rgb(${(62 + 70 * lit * near) | 0},${(50 + 32 * lit * near) | 0},${(48 + 14 * lit * near) | 0})`);
-      fill.addColorStop(0.5, '#2a2526');
-      fill.addColorStop(1, '#111012');
-      ctx.fillStyle = fill;
-      ctx.beginPath();
-      ctx.ellipse(x, y, rx, ry, stone.tilt, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  private drawEmbers(ctx: CanvasRenderingContext2D) {
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
-    const glow = this.sprites[6];
-    for (const e of this.embers) {
-      const t = e.age / e.life;
-      const twinkle = 0.55 + 0.45 * Math.sin(e.seed * 13 + this.time * (12 + (e.seed % 7)));
-      const alpha = clamp((1 - t) ** 1.2 * twinkle, 0, 1);
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = `rgb(255,${(225 - 150 * t) | 0},${(120 - 100 * t) | 0})`;
-      ctx.lineWidth = e.size;
-      ctx.beginPath();
-      ctx.moveTo(e.x - e.vx * 0.035, e.y - e.vy * 0.035);
-      ctx.lineTo(e.x, e.y);
-      ctx.stroke();
-      const r = e.size * 6;
-      ctx.globalAlpha = alpha * 0.45;
-      ctx.drawImage(glow, e.x - r, e.y - r, r * 2, r * 2);
-    }
-    ctx.globalAlpha = 1;
+    const x = this.cx + stone.x * s;
+    const y = this.cy + stone.y * s;
+    const near = 1 - Math.abs(stone.x) / 220;
+    ctx.save();
+    ctx.translate(x, y);
+    shade(
+      ctx,
+      shape,
+      { base: '#2c2636', shadow: '#17131e', light: blend('#423a50', '#ef8c50', clamp(light * near, 0, 1)) },
+      { x: -stone.x * s, y: -70 * s - stone.y * s },
+      4 * s,
+      6 * s,
+    );
+    ctx.restore();
   }
 }
+
+// ---- Settings ----
+
+/** `--bg-color`, which the page continues in below the hero. */
+const PAGE_BG = '#0f0f13';
+
+/** Fades the bottom of the scene into the page background below the hero. */
+export function fadeToPage(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  const g = ctx.createLinearGradient(0, height - 70, 0, height);
+  g.addColorStop(0, 'rgba(15,15,19,0)');
+  g.addColorStop(1, PAGE_BG);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = g;
+  ctx.fillRect(0, height - 70, width, 70);
+}
+
+/** Pines along a ridgeline, `spacing` px apart on average. */
+export function ridgePines(
+  path: Path2D,
+  width: number,
+  baseY: number,
+  amp: number,
+  freq: number,
+  seed: number,
+  size: number,
+  rand: () => number,
+) {
+  for (let x = rand() * 20; x < width; x += size * (0.45 + rand() * 0.9)) {
+    pine(path, x, ridgeY(x, baseY, amp, freq, seed) + size * 0.15, size * (0.6 + rand() * 0.6), rand);
+  }
+}
+
+/** Big pines framing both sides of the scene, leaving the middle open. */
+export function framingPines(path: Path2D, width: number, ground: number, height: number, rand: () => number) {
+  const edge = Math.max(width * 0.2, 90);
+  for (const side of [-1, 1]) {
+    for (let d = -20; d < edge; d += 26 + rand() * 40) {
+      const x = side < 0 ? d : width - d;
+      pine(path, x, ground + 8, height * (0.32 + rand() * 0.2) * (1 - d / (edge * 2.2)), rand);
+    }
+  }
+}
+
+/** Ground in front of everything, with a gently rolling top edge. */
+export function groundPath(width: number, top: number, bottom: number) {
+  const path = new Path2D();
+  path.moveTo(0, bottom);
+  for (let x = 0; x <= width + 8; x += 8) path.lineTo(x, top + Math.sin(x * 0.006) * 6 + Math.sin(x * 0.017 + 2) * 3);
+  path.lineTo(width, bottom);
+  path.closePath();
+  return path;
+}
+
+/** Mountains at dusk: the last light on the horizon behind layered ridges and pines. */
+const DUSK: CampfireSetting = {
+  paint(ctx, { width, height, scale: s, cy }) {
+    const rand = seeded(7);
+    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    sky.addColorStop(0, '#121226');
+    sky.addColorStop(0.42, '#211b37');
+    sky.addColorStop(0.6, '#43273f');
+    sky.addColorStop(0.72, '#6a3543');
+    sky.addColorStop(1, '#6a3543');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.fillStyle = '#f4e3cf';
+    for (let i = 0; i < 70; i++) {
+      ctx.globalAlpha = 0.15 + rand() * 0.45;
+      const size = rand() < 0.1 ? 1.6 : 1;
+      ctx.fillRect(rand() * width, rand() ** 1.5 * height * 0.45, size, size);
+    }
+    ctx.globalAlpha = 1;
+
+    const far = { base: height * 0.66, amp: height * 0.17, freq: 0.0032, seed: 3 };
+    ctx.fillStyle = '#3b2843';
+    ctx.fill(ridge(width, far.base, far.amp, far.freq, far.seed, height));
+
+    const mid = { base: height * 0.73, amp: height * 0.08, freq: 0.006, seed: 11 };
+    const midPath = ridge(width, mid.base, mid.amp, mid.freq, mid.seed, height);
+    ridgePines(midPath, width, mid.base, mid.amp, mid.freq, mid.seed, 26 * s, rand);
+    ctx.fillStyle = '#2a1e34';
+    ctx.fill(midPath);
+
+    const ground = cy - 44 * s;
+    const near = new Path2D();
+    framingPines(near, width, ground, height, rand);
+    ctx.fillStyle = '#1b1526';
+    ctx.fill(near);
+    ctx.fillStyle = '#16121e';
+    ctx.fill(groundPath(width, ground, height));
+  },
+};
 
 export const classicTheme: FireTheme = {
   id: 'classic',
@@ -565,5 +456,5 @@ export const classicTheme: FireTheme = {
     ambient: '#2a1a10',
   },
   letters: { knock: 'touch', draggable: true, item: false },
-  createRenderer: () => new ClassicCampfire(),
+  createRenderer: () => new IllustratedCampfire(DUSK),
 };
