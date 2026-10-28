@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Bungee, Pixelify_Sans } from 'next/font/google';
+import { Bungee, Fredoka, Pixelify_Sans } from 'next/font/google';
 import '@/app/globals.css';
 import '@/styles/landing.css';
 
@@ -11,9 +11,10 @@ export const metadata: Metadata = {
   },
 };
 
-// Title fonts for the DOOM and Minecraft hero themes; only downloaded once a theme uses them.
+// Title fonts for the hero themes; only downloaded once a theme uses them.
 const doomFont = Bungee({ weight: '400', subsets: ['latin'], variable: '--font-doom', preload: false });
 const pixelFont = Pixelify_Sans({ weight: '700', subsets: ['latin'], variable: '--font-pixel', preload: false });
+const roundFont = Fredoka({ weight: '600', subsets: ['latin'], variable: '--font-round', preload: false });
 
 export default function RootLayout({
   children,
@@ -21,7 +22,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ko" className={`${doomFont.variable} ${pixelFont.variable}`}>
+    <html lang="ko" className={`${doomFont.variable} ${pixelFont.variable} ${roundFont.variable}`}>
       <body>{children}</body>
     </html>
   );

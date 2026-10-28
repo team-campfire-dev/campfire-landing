@@ -337,6 +337,102 @@
     filter: drop-shadow(3px 3px 0 rgba(0, 0, 0, 0.6));
 }
 
+/* ===== Theme: ASCII ===== */
+.hero-section[data-fire-theme='ascii'] :is(.hero-title, .hero-subtitle, .title-letter-body) {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+.hero-section[data-fire-theme='ascii'] .hero-title {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+/* A terminal cursor after the title. */
+.hero-section[data-fire-theme='ascii'] .hero-title::after {
+    content: '';
+    display: inline-block;
+    width: 0.55em;
+    height: 0.9em;
+    margin-left: 0.1em;
+    vertical-align: -0.08em;
+    background: var(--title-to);
+    animation: ascii-cursor-blink 1s steps(1) infinite;
+}
+
+@keyframes ascii-cursor-blink {
+    50% {
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hero-section[data-fire-theme='ascii'] .hero-title::after {
+        animation: none;
+    }
+}
+
+/* ===== Theme: Marshmallow ===== */
+.hero-section[data-fire-theme='marshmallow'] :is(.hero-title, .title-letter-body) {
+    font-family: var(--font-round), 'Arial Rounded MT Bold', sans-serif;
+    font-weight: 600;
+}
+
+/* Puffy white, toasting through gold and brown to black as --heat rises. */
+.hero-section[data-fire-theme='marshmallow'] :is(.hero-letter, .title-letter-body) {
+    --toast-gold: color-mix(in srgb, #e9b65c clamp(0%, calc(var(--heat, 0) / 0.35 * 100%), 100%), #fffaf2);
+    --toast-brown: color-mix(in srgb, #8a4a1c clamp(0%, calc((var(--heat, 0) - 0.35) / 0.3 * 100%), 100%), var(--toast-gold));
+    --toast: color-mix(in srgb, #21140e clamp(0%, calc((var(--heat, 0) - 0.65) / 0.3 * 100%), 100%), var(--toast-brown));
+    background-image: none;
+    -webkit-text-fill-color: var(--toast);
+    color: var(--toast);
+}
+
+.hero-section[data-fire-theme='marshmallow'] .hero-title {
+    filter: drop-shadow(0 3px 0 rgba(150, 110, 80, 0.45)) drop-shadow(0 0 18px var(--title-glow));
+}
+
+.hero-section[data-fire-theme='marshmallow'] .title-letter-body {
+    filter: drop-shadow(0 2px 0 rgba(90, 60, 40, 0.5));
+}
+
+/* A held marshmallow is on a skewer. */
+.hero-section[data-fire-theme='marshmallow'] .title-letter-body.is-dragging::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: -1;
+    width: 0.07em;
+    height: 1.8em;
+    border-radius: 0.04em;
+    background: linear-gradient(180deg, #c8a77a, #8a6440);
+    transform: rotate(-32deg);
+    transform-origin: top center;
+}
+
+/* ===== Theme: Forge ===== */
+.hero-section[data-fire-theme='forge'] :is(.hero-title, .title-letter-body) {
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+/* Cold steel; as --heat rises the letter glows dull red, then orange, then yellow-white. */
+.hero-section[data-fire-theme='forge'] :is(.hero-letter, .title-letter-body) {
+    --forge-orange: color-mix(in srgb, #ff7a1a clamp(0%, calc((var(--heat, 0) - 0.15) / 0.35 * 100%), 100%), #a81e08);
+    --forge-hot: color-mix(in srgb, #fff0a8 clamp(0%, calc((var(--heat, 0) - 0.5) / 0.4 * 100%), 100%), var(--forge-orange));
+    background-image: linear-gradient(180deg, #f3f5f7 0%, #aab3bb 45%, #59636c 100%);
+    -webkit-text-fill-color: color-mix(in srgb, var(--forge-hot) clamp(0%, calc(var(--heat, 0) * 220%), 100%), transparent);
+}
+
+.hero-section[data-fire-theme='forge'] .hero-title {
+    filter: drop-shadow(0 3px 0 #1d1f22) drop-shadow(0 0 16px var(--title-glow));
+}
+
+.hero-section[data-fire-theme='forge'] .title-letter-body {
+    filter: drop-shadow(0 2px 0 #1d1f22) drop-shadow(0 0 calc(var(--heat, 0) * 18px) rgba(255, 100, 20, 0.9));
+}
+
 /* ===== About Section ===== */
 .about-section {
     padding: 4rem 2rem;
