@@ -467,6 +467,39 @@
     filter: drop-shadow(0 0 6px var(--title-glow));
 }
 
+/* ===== Theme: Pencil ===== */
+/* Graphite on paper: dark text, and the carousel controls darkened to show on the page. */
+.hero-section[data-fire-theme='pencil'] :is(.hero-title, .hero-subtitle, .title-letter-body) {
+    font-family: var(--font-hand), 'Comic Sans MS', cursive;
+}
+
+.hero-section[data-fire-theme='pencil'] .hero-title {
+    filter: none;
+}
+
+.hero-section[data-fire-theme='pencil'] :is(.hero-letter, .title-letter-body) {
+    background-image: none;
+    -webkit-text-fill-color: #3a3a44;
+    color: #3a3a44;
+}
+
+.hero-section[data-fire-theme='pencil'] .hero-subtitle {
+    color: #4a4a58;
+    opacity: 1;
+}
+
+.hero-section[data-fire-theme='pencil'] .fire-theme-arrow {
+    color: rgba(40, 40, 50, 0.35);
+}
+
+.hero-section[data-fire-theme='pencil'] .fire-theme-dot::after {
+    background: rgba(40, 40, 50, 0.25);
+}
+
+.hero-section[data-fire-theme='pencil'] .fire-theme-dot[aria-pressed='true']::after {
+    background: #3a3a44;
+}
+
 /* ===== About Section ===== */
 .about-section {
     padding: 4rem 2rem;

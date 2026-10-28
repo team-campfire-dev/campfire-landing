@@ -8,6 +8,7 @@ import { marshmallowTheme } from './marshmallow';
 import { minecraftTheme, soulCampfireTheme } from './minecraft';
 import { oneshotTheme } from './oneshot';
 import { outerWildsTheme } from './outerWilds';
+import { pencilTheme } from './pencil';
 import { scienceTheme } from './science';
 import { sweetPotatoTheme } from './sweetPotato';
 import { vectorTheme } from './vector';
@@ -27,6 +28,7 @@ export const fireThemes = {
   fluid: fluidTheme,
   science: scienceTheme,
   vector: vectorTheme,
+  pencil: pencilTheme,
 } satisfies Record<string, FireTheme>;
 
 export type FireThemeId = keyof typeof fireThemes;
