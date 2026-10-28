@@ -4,6 +4,7 @@ import { classicTheme } from './classic';
 import { doomTheme } from './doom';
 import { fluidTheme } from './fluid';
 import { forgeTheme } from './forge';
+import { gtaTheme } from './gta';
 import { marshmallowTheme } from './marshmallow';
 import { minecraftTheme, soulCampfireTheme } from './minecraft';
 import { oneshotTheme } from './oneshot';
@@ -29,6 +30,7 @@ export const fireThemes = {
   science: scienceTheme,
   vector: vectorTheme,
   pencil: pencilTheme,
+  gta: gtaTheme,
 } satisfies Record<string, FireTheme>;
 
 export type FireThemeId = keyof typeof fireThemes;

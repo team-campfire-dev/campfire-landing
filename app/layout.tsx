@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Bungee, Fredoka, Gaegu, Pixelify_Sans } from 'next/font/google';
+import { Bungee, Fredoka, Gaegu, Passion_One, Pixelify_Sans } from 'next/font/google';
 import '@/app/globals.css';
 import '@/styles/landing.css';
 
@@ -16,6 +16,7 @@ const doomFont = Bungee({ weight: '400', subsets: ['latin'], variable: '--font-d
 const pixelFont = Pixelify_Sans({ weight: '700', subsets: ['latin'], variable: '--font-pixel', preload: false });
 const roundFont = Fredoka({ weight: '600', subsets: ['latin'], variable: '--font-round', preload: false });
 const handFont = Gaegu({ weight: '700', subsets: ['latin'], variable: '--font-hand', preload: false });
+const gtaFont = Passion_One({ weight: '400', subsets: ['latin'], variable: '--font-gta', preload: false });
 
 export default function RootLayout({
   children,
@@ -23,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ko" className={`${doomFont.variable} ${pixelFont.variable} ${roundFont.variable} ${handFont.variable}`}>
+    <html lang="ko" className={`${doomFont.variable} ${pixelFont.variable} ${roundFont.variable} ${handFont.variable} ${gtaFont.variable}`}>
       <body>{children}</body>
     </html>
   );
