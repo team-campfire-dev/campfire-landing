@@ -54,19 +54,21 @@ export class CampfireController {
   }
 
   isInFire(x: number, y: number, margin = 0) {
-    const zone = this.renderer?.hotZone();
-    if (!zone) return false;
-    return (
-      x >= zone.x - margin &&
-      x <= zone.x + zone.width + margin &&
-      y >= zone.y - margin &&
-      y <= zone.y + zone.height + margin
-    );
+    return this.fireDistance(x, y) <= margin;
   }
 
-  /** Where fallen letters rest, in surface coordinates. */
-  groundY(): number | null {
-    return this.renderer?.groundY?.() ?? null;
+  /** Px from a point to the hot zone: 0 inside it, Infinity while nothing can burn. */
+  fireDistance(x: number, y: number) {
+    const zone = this.renderer?.hotZone();
+    if (!zone) return Infinity;
+    const dx = Math.max(zone.x - x, 0, x - (zone.x + zone.width));
+    const dy = Math.max(zone.y - y, 0, y - (zone.y + zone.height));
+    return Math.hypot(dx, dy);
+  }
+
+  /** Where fallen letters rest at `x`, in surface coordinates. */
+  groundY(x: number): number | null {
+    return this.renderer?.groundY?.(x) ?? null;
   }
 
   feed(x: number, y: number, fuel: number) {

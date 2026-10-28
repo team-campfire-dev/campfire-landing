@@ -2,10 +2,11 @@ import type { LetterBehavior } from './campfire/types';
 import type { PointerTracker } from './PointerTracker';
 
 export interface FireTarget {
-  isInFire(x: number, y: number): boolean;
+  /** Px from a point to the hot zone: 0 inside it, Infinity while nothing can burn. */
+  fireDistance(x: number, y: number): number;
   feed(x: number, y: number, fuel: number): void;
-  /** Where fallen letters rest; null means the bottom of the surface. */
-  groundY(): number | null;
+  /** Where fallen letters rest at `x`; null means the bottom of the surface. */
+  groundY(x: number): number | null;
 }
 
 interface LetterPhysicsOptions {
@@ -52,6 +53,15 @@ interface LetterBody {
   targetY: number;
   grabX: number;
   grabY: number;
+  /** Where the current press started (client px), to tell a click from a drag. */
+  pressX: number;
+  pressY: number;
+  /** 0 = cold, 1 = catches fire (see `LetterHeat`). */
+  heat: number;
+  /** Heat last written to the element's `--heat`. */
+  shownHeat: number;
+  /** How flat it has been hammered, 0..MAX_SQUASH. */
+  squash: number;
   cleanup: () => void;
 }
 
@@ -64,6 +74,13 @@ const RETURN_DELAY_MS = 1600;
 const REKINDLE_MS = 900;
 const MAX_THROW = 2400;
 const ITEM_SCALE = 0.7;
+/** Near the fire (within `LetterHeat.reach`) letters heat at most this fraction of the in-fire rate. */
+const NEAR_RATE = 0.45;
+/** A letter must be at least this hot to give under the hammer. */
+const MALLEABLE = 0.3;
+const MAX_SQUASH = 0.55;
+/** Pointer travel (px) beyond which a press is a drag, not a click. */
+const CLICK_SLOP = 6;
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
@@ -196,6 +213,11 @@ export class LetterPhysics {
       targetY: 0,
       grabX: 0,
       grabY: 0,
+      pressX: 0,
+      pressY: 0,
+      heat: 0,
+      shownHeat: 0,
+      squash: 0,
       cleanup: () => {},
     };
     body.cleanup = this.bindBody(body);
@@ -212,6 +234,10 @@ export class LetterPhysics {
       if (this.behavior.draggable && this.behavior.knock === 'touch') this.grab(body, e);
     };
     const onClick = (e: MouseEvent) => {
+      if (this.behavior.hammer && body.state === 'flying') {
+        if (Math.hypot(e.clientX - body.pressX, e.clientY - body.pressY) <= CLICK_SLOP) this.strike(body);
+        return;
+      }
       if (this.behavior.knock !== 'shoot' || body.state !== 'flying') return;
       const p = this.opts.pointer.toLocal(e.clientX, e.clientY);
       const kick = blastFrom(p.x, p.y, body.x, body.y);
@@ -265,6 +291,8 @@ export class LetterPhysics {
     body.pointerId = e.pointerId;
     body.grabX = p.x - body.x;
     body.grabY = p.y - body.y;
+    body.pressX = e.clientX;
+    body.pressY = e.clientY;
     body.targetX = body.x;
     body.targetY = body.y;
     body.timer = 0;
@@ -291,6 +319,15 @@ export class LetterPhysics {
       body.vy = clamp(v.vy, -MAX_THROW, MAX_THROW);
     }
     body.spin += body.vx * 0.004;
+  }
+
+  /** A hammer blow: hot letters flatten a little and hop, cold ones just ring. */
+  private strike(body: LetterBody) {
+    body.vy = Math.min(body.vy, -180);
+    body.timer = 0;
+    if (body.heat < MALLEABLE) return;
+    body.squash = Math.min(MAX_SQUASH, body.squash + 0.08 + 0.12 * body.heat);
+    body.heat = Math.max(0, body.heat - 0.04);
   }
 
   private ignite(body: LetterBody) {
@@ -335,10 +372,10 @@ export class LetterPhysics {
     this.last = now;
     this.clock += dt;
     const width = this.opts.surface.clientWidth;
-    const floor = this.opts.fire.groundY() ?? this.opts.surface.clientHeight;
+    const bottom = this.opts.surface.clientHeight;
 
     for (let step = 0; step < 2; step++) {
-      for (const body of this.bodies) this.integrate(body, dt / 2, width, floor);
+      for (const body of this.bodies) this.integrate(body, dt / 2, width, this.opts.fire.groundY(body.x) ?? bottom);
       this.collide();
     }
 
@@ -433,7 +470,25 @@ export class LetterPhysics {
       }
     }
 
-    if (this.opts.fire.isInFire(body.x, body.y)) this.ignite(body);
+    this.warm(body, dt);
+  }
+
+  private warm(body: LetterBody, dt: number) {
+    const distance = this.opts.fire.fireDistance(body.x, body.y);
+    const heat = this.behavior.heat;
+    if (!heat) {
+      if (distance === 0) this.ignite(body);
+      return;
+    }
+    if (distance === 0) {
+      body.heat += heat.rate * dt;
+    } else if (distance < heat.reach) {
+      const closeness = 1 - distance / heat.reach;
+      body.heat += heat.rate * NEAR_RATE * closeness * closeness * dt;
+    } else {
+      body.heat = Math.max(0, body.heat - heat.cool * dt);
+    }
+    if (body.heat >= 1) this.ignite(body);
   }
 
   /** Cheap circle-vs-circle separation so fallen letters pile up instead of overlapping. Items pass through each other. */
@@ -483,7 +538,13 @@ export class LetterPhysics {
       y -= bob;
       turn = ` rotateY(${this.clock * 1.8 + body.phase}rad)`;
     }
+    // Hammering flattens along the vertical, whichever way the letter lies.
+    const flat = body.squash ? ` scale(${1 + body.squash * 0.7}, ${1 - body.squash})` : '';
     body.el.style.transform =
-      `translate3d(${x}px, ${y}px, 0) rotate(${body.angle}rad)${turn} scale(${scale})`;
+      `translate3d(${x}px, ${y}px, 0)${flat} rotate(${body.angle}rad)${turn} scale(${scale})`;
+    if (Math.abs(body.heat - body.shownHeat) > 0.004) {
+      body.shownHeat = body.heat;
+      body.el.style.setProperty('--heat', Math.min(body.heat, 1).toFixed(3));
+    }
   }
 }

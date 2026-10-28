@@ -53,12 +53,25 @@ export interface FireRenderer {
   draw(ctx: CanvasRenderingContext2D): void;
   /** Null while nothing can burn (e.g. an extinguished campfire). */
   hotZone(): HotZone | null;
-  /** Y where fallen letters come to rest; defaults to the bottom of the hero. */
-  groundY?(): number;
+  /** Y where fallen letters come to rest at `x`; defaults to the bottom of the hero. */
+  groundY?(x: number): number;
   tap(tap: FireTap): void;
   /** Something (e.g. a title letter) was thrown into the fire. */
   feed(x: number, y: number, fuel: number): void;
   dispose?(): void;
+}
+
+/**
+ * Letters that warm up gradually instead of catching fire on contact. Heat runs from 0 to 1
+ * (the letter catches fire) and is exposed to CSS as `--heat` on the fallen letter.
+ */
+export interface LetterHeat {
+  /** Heat gained per second inside the hot zone; within `reach` it builds more slowly. */
+  rate: number;
+  /** Px around the hot zone where letters still warm up. */
+  reach: number;
+  /** Heat lost per second away from the fire; 0 keeps it (a toasted marshmallow stays toasted). */
+  cool: number;
 }
 
 /** How title letters react in a theme. */
@@ -69,6 +82,10 @@ export interface LetterBehavior {
   draggable: boolean;
   /** Fallen letters shrink and float like dropped items. */
   item: boolean;
+  /** Gradual heating; without it letters catch fire as soon as they touch the hot zone. */
+  heat?: LetterHeat;
+  /** Clicking a hot fallen letter hammers it flatter. */
+  hammer?: boolean;
 }
 
 /** Colors applied to the hero around the canvas, exposed as CSS custom properties. */
