@@ -115,6 +115,11 @@ class Voices {
     return this.ac?.state === 'running';
   }
 
+  /** Audio clock in seconds, for scheduling notes ahead of time. */
+  get now() {
+    return this.ac?.currentTime ?? 0;
+  }
+
   start() {
     try {
       this.ac ??= new AudioContext();
@@ -124,11 +129,11 @@ class Voices {
     }
   }
 
-  /** A plucked string, banjo-ish: bright attack, quick decay. */
-  pluck(freq: number, gain: number) {
+  /** A plucked string, banjo-ish: bright attack, quick decay. `when` is on the audio clock. */
+  pluck(freq: number, gain: number, when?: number) {
     const ac = this.ac;
     if (!ac || gain < 0.002) return;
-    const now = ac.currentTime;
+    const now = when ?? ac.currentTime;
     const osc = ac.createOscillator();
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(freq * 1.01, now);
@@ -146,11 +151,11 @@ class Voices {
     osc.stop(now + 0.75);
   }
 
-  /** A breathy flute note with a little vibrato. */
-  flute(freq: number, gain: number, length: number) {
+  /** A breathy flute note with a little vibrato. `when` is on the audio clock. */
+  flute(freq: number, gain: number, length: number, when?: number) {
     const ac = this.ac;
     if (!ac || gain < 0.002) return;
-    const now = ac.currentTime;
+    const now = when ?? ac.currentTime;
     const osc = ac.createOscillator();
     osc.frequency.value = freq;
     const vibrato = ac.createOscillator();
@@ -206,13 +211,47 @@ interface Signal {
   /** What the scope reads out when it locks on. */
   label: string;
   voice: 'pluck' | 'flute';
-  /** MIDI notes; -1 is a rest. */
-  notes: number[];
-  beats: number[];
-  step: number;
-  next: number;
   strength: number;
 }
+
+/** One note of the theme: which signal plays it, when (in eighths into the loop), pitch (MIDI) and length (eighths). */
+interface ThemeNote {
+  signal: number;
+  at: number;
+  note: number;
+  length: number;
+}
+
+// The repeating phrase (bars 9–12) of the Outer Wilds main theme by Andrew Prahlow, from Andrew
+// Wrangell's piano arrangement; used with permission. The left hand (banjo) and the right hand
+// (flute) are two signals on one clock, so aiming between them plays the whole phrase.
+const TEMPO = 92;
+const EIGHTH = 60 / TEMPO / 2;
+const LOOP_EIGHTHS = 32;
+/** Notes are scheduled this far ahead on the audio clock, so frame timing doesn't make them stutter. */
+const LOOKAHEAD = 0.2;
+
+const ostinato = (bar: number, low: number) =>
+  Array.from({ length: 8 }, (_, i) => ({ signal: 0, at: bar * 8 + i, note: i % 2 ? 57 : low, length: 1 }));
+const melody = (notes: [number, number, number][]) => notes.map(([at, note, length]) => ({ signal: 1, at, note, length }));
+
+const THEME: ThemeNote[] = [
+  // Left hand: eighths rocking up to A3 over D, E, F#, E.
+  ...ostinato(0, 50),
+  ...ostinato(1, 52),
+  ...ostinato(2, 54),
+  ...ostinato(3, 52),
+  ...melody([
+    // Bar 9: D A C#. A
+    [0, 62, 2], [2, 69, 2], [4, 73, 3], [7, 69, 1],
+    // Bar 10: D C# B A B C# A
+    [8, 74, 1], [9, 73, 1], [10, 71, 1], [11, 69, 1], [12, 71, 1], [13, 73, 1], [14, 69, 2],
+    // Bar 11: E A C#. A
+    [16, 64, 2], [18, 69, 2], [20, 73, 3], [23, 69, 1],
+    // Bar 12: D C# B A B C# E C#
+    [24, 74, 1], [25, 73, 1], [26, 71, 1], [27, 69, 1], [28, 71, 1], [29, 73, 1], [30, 76, 1], [31, 73, 1],
+  ]),
+].sort((a, b) => a.at - b.at);
 
 interface Puff {
   x: number;
@@ -464,25 +503,13 @@ class TinyPlanet implements CampfireSetting {
   private puffs: Puff[] = [];
 
   private readonly signals: Signal[] = [
-    {
-      label: '가스 행성 · 밴조',
-      voice: 'pluck',
-      notes: [62, 66, 69, 74, 71, 69, 66, 69, 64, 66, 62, -1],
-      beats: [0.28, 0.28, 0.28, 0.56, 0.28, 0.28, 0.28, 0.28, 0.28, 0.28, 0.56, 0.56],
-      step: 0,
-      next: 0,
-      strength: 0,
-    },
-    {
-      label: '작은 위성 · 플루트',
-      voice: 'flute',
-      notes: [69, 71, 74, 76, 74, 71, 69, 66, -1],
-      beats: [0.6, 0.3, 0.9, 0.6, 0.6, 0.3, 0.9, 1.2, 0.8],
-      step: 0,
-      next: 0,
-      strength: 0,
-    },
+    { label: '가스 행성 · 밴조', voice: 'pluck', strength: 0 },
+    { label: '작은 위성 · 플루트', voice: 'flute', strength: 0 },
   ];
+  /** Audio-clock time the current pass through the theme began, or -1 before the music starts. */
+  private loopStart = -1;
+  /** Next note of `THEME` to schedule. */
+  private themeStep = 0;
   private scope: Point | null = null;
 
   private shardSpot = 0;
@@ -568,21 +595,8 @@ class TinyPlanet implements CampfireSetting {
         ? clamp(1 - (Math.hypot(this.scope.x - src.x, this.scope.y - src.y) - src.r) / (170 * s), 0, 1) ** 1.4
         : 0;
       signal.strength += (target - signal.strength) * Math.min(1, dt * 6);
-      if (signal.strength < 0.04 || !this.voices.ready) {
-        signal.next = time;
-        return;
-      }
-      if (time < signal.next) return;
-      const note = signal.notes[signal.step];
-      const beat = signal.beats[signal.step];
-      if (note >= 0) {
-        const gain = 0.12 * signal.strength;
-        if (signal.voice === 'pluck') this.voices.pluck(midi(note), gain);
-        else this.voices.flute(midi(note), gain * 0.8, beat * 0.95);
-      }
-      signal.step = (signal.step + 1) % signal.notes.length;
-      signal.next = time + beat;
     });
+    this.playTheme();
 
     // Quantum shard: it only moves while nobody is looking.
     const spots = shardSpots(view);
@@ -680,6 +694,39 @@ class TinyPlanet implements CampfireSetting {
   }
 
   // ---- interactions ----
+
+  /**
+   * Keeps the theme running on the audio clock whether or not anyone is listening, so both
+   * signals stay in time; each note is only voiced at the strength its signal has right now.
+   */
+  private playTheme() {
+    if (!this.voices.ready) {
+      this.loopStart = -1;
+      return;
+    }
+    const now = this.voices.now;
+    // Start fresh, or skip ahead after the tab was hidden rather than playing a burst of late notes.
+    if (this.loopStart < 0 || now - (this.loopStart + THEME[this.themeStep].at * EIGHTH) > 0.25) {
+      this.loopStart = now + 0.05;
+      this.themeStep = 0;
+    }
+    for (;;) {
+      const n = THEME[this.themeStep];
+      const when = this.loopStart + n.at * EIGHTH;
+      if (when > now + LOOKAHEAD) break;
+      const signal = this.signals[n.signal];
+      const gain = 0.13 * signal.strength;
+      if (signal.strength > 0.04) {
+        if (signal.voice === 'pluck') this.voices.pluck(midi(n.note), gain, when);
+        else this.voices.flute(midi(n.note), gain * 0.85, n.length * EIGHTH * 0.95, when);
+      }
+      this.themeStep++;
+      if (this.themeStep === THEME.length) {
+        this.themeStep = 0;
+        this.loopStart += LOOP_EIGHTHS * EIGHTH;
+      }
+    }
+  }
 
   private restart() {
     this.setShip('docked');
