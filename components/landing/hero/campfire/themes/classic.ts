@@ -26,6 +26,9 @@ export interface CampfireView {
   /** Fire brightness, 0 (out) to ~1.5 (roaring). */
   light: number;
   time: number;
+  reducedMotion: boolean;
+  /** Pointer over the hero, or null. */
+  pointer: PointerSample | null;
 }
 
 /** The place the campfire burns in: everything but the fire, logs and stones. */
@@ -36,6 +39,13 @@ export interface CampfireSetting {
   animate?(ctx: CanvasRenderingContext2D, view: CampfireView): void;
   /** Props that catch the firelight, drawn just before the fire. */
   props?(ctx: CanvasRenderingContext2D, view: CampfireView): void;
+  /** Drawn over everything, fire included. */
+  overlay?(ctx: CanvasRenderingContext2D, view: CampfireView): void;
+  /** A tap the setting wants for itself; return true to keep it from the fire. */
+  tap?(tap: FireTap, view: CampfireView): boolean;
+  /** Advances the setting's own simulation. */
+  update?(dt: number, view: CampfireView): void;
+  dispose?(): void;
 }
 
 interface Log {
@@ -121,6 +131,7 @@ export class IllustratedCampfire implements FireRenderer {
   private flicker = 1;
   private wind = 0;
   private pointer: PointerSample | null = null;
+  private reducedMotion = false;
   private emberDebt = 0;
 
   constructor(private readonly setting: CampfireSetting) {}
@@ -141,7 +152,9 @@ export class IllustratedCampfire implements FireRenderer {
     return { x: this.cx - 100 * s, y: top, width: 200 * s, height: this.height - top };
   }
 
-  tap({ x, onFire, onLetter }: FireTap) {
+  tap(tap: FireTap) {
+    if (this.setting.tap?.(tap, this.view())) return;
+    const { x, onFire, onLetter } = tap;
     if (!onFire || onLetter) return;
     this.boost = Math.min(this.boost + 0.35, 2.6);
     const bx = clamp(x, this.cx - 70 * this.scale, this.cx + 70 * this.scale);
@@ -158,6 +171,7 @@ export class IllustratedCampfire implements FireRenderer {
   update({ time, dt, pointer, reducedMotion }: FireFrame) {
     this.time = time;
     this.pointer = pointer;
+    this.reducedMotion = reducedMotion;
     this.ignition = Math.min(1, this.ignition + dt / 1.6);
     const lit = 1 - (1 - this.ignition) ** 3;
     this.boost *= Math.exp(-0.5 * dt);
@@ -191,6 +205,7 @@ export class IllustratedCampfire implements FireRenderer {
       this.pushEmber(this.cx + gauss() * 40 * s, this.cy - rand(30, 110) * s, rand(-30, 30) * s, -rand(80, 200) * s);
     }
     this.stepEmbers(dt);
+    this.setting.update?.(dt, this.view());
   }
 
   draw(ctx: CanvasRenderingContext2D) {
@@ -218,8 +233,13 @@ export class IllustratedCampfire implements FireRenderer {
       this.drawStone(ctx, FRONT_STONES[i], this.stoneShapes[BACK_STONES.length + i], light);
     }
     drawEmbers(ctx, this.embers, this.time);
+    this.setting.overlay?.(ctx, view);
     // Last, so the firelight doesn't leave a seam where the hero meets the page.
     fadeToPage(ctx, this.width, this.height);
+  }
+
+  dispose() {
+    this.setting.dispose?.();
   }
 
   private view(light = 0): CampfireView {
@@ -231,6 +251,8 @@ export class IllustratedCampfire implements FireRenderer {
       cy: this.cy,
       light,
       time: this.time,
+      reducedMotion: this.reducedMotion,
+      pointer: this.pointer,
     };
   }
 

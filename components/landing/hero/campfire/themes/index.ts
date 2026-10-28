@@ -5,6 +5,7 @@ import { doomTheme } from './doom';
 import { forgeTheme } from './forge';
 import { marshmallowTheme } from './marshmallow';
 import { minecraftTheme, soulCampfireTheme } from './minecraft';
+import { outerWildsTheme } from './outerWilds';
 import { sweetPotatoTheme } from './sweetPotato';
 
 // Register new themes here — HeroSection picks them by id, the picker lists them in this order.
@@ -17,6 +18,7 @@ export const fireThemes = {
   marshmallow: marshmallowTheme,
   forge: forgeTheme,
   'sweet-potato': sweetPotatoTheme,
+  'outer-wilds': outerWildsTheme,
 } satisfies Record<string, FireTheme>;
 
 export type FireThemeId = keyof typeof fireThemes;

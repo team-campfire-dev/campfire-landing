@@ -420,7 +420,7 @@ export class LetterPhysics {
         break;
       }
       case 'flying': {
-        body.vy += GRAVITY * dt;
+        body.vy += GRAVITY * (this.behavior.gravity ?? 1) * dt;
         body.vx *= 1 - 0.25 * dt;
         body.x += body.vx * dt;
         body.y += body.vy * dt;

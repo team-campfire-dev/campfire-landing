@@ -86,6 +86,8 @@ export interface LetterBehavior {
   heat?: LetterHeat;
   /** Clicking a hot fallen letter hammers it flatter. */
   hammer?: boolean;
+  /** Multiplies gravity on fallen letters; below 1 they drift down slowly. */
+  gravity?: number;
 }
 
 /** Colors applied to the hero around the canvas, exposed as CSS custom properties. */
