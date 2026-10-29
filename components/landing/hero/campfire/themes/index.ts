@@ -13,6 +13,7 @@ import { pencilTheme } from './pencil';
 import { scienceTheme } from './science';
 import { sweetPotatoTheme } from './sweetPotato';
 import { vectorTheme } from './vector';
+import { winterCampTheme } from './winterCamp';
 
 // Register new themes here — HeroSection picks them by id, the picker lists them in this order.
 export const fireThemes = {
@@ -31,6 +32,7 @@ export const fireThemes = {
   vector: vectorTheme,
   pencil: pencilTheme,
   gta: gtaTheme,
+  'winter-camp': winterCampTheme,
 } satisfies Record<string, FireTheme>;
 
 export type FireThemeId = keyof typeof fireThemes;
