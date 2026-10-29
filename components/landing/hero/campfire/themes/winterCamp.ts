@@ -989,91 +989,192 @@ class WinterCamp implements FireRenderer {
     ctx.stroke(tarp);
   }
 
-  /** The car parked on the gravel, from behind: a grey compact SUV. */
+  /**
+   * The team's car parked on the gravel, from behind: a pearl grey Korando — broad hips, a short
+   * raked rear window under a roof spoiler, and big tail lamps wrapping round the corners.
+   */
   private paintCar(ctx: CanvasRenderingContext2D) {
     const s = this.scale;
     const x = this.carX;
     const y = this.carY;
     const toward = { x: -1, y: -0.8 };
+    const pearl: Tones = { base: '#8a857d', shadow: '#55524c', light: '#b4afa6' };
+    const P = (px: number, py: number): [number, number] => [x + px * s, y + py * s];
+
     ctx.fillStyle = 'rgba(8, 6, 4, 0.5)';
     ctx.beginPath();
-    ctx.ellipse(x, y + 2 * s, 84 * s, 8 * s, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y + 2 * s, 88 * s, 8 * s, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Tyres under the body.
-    ctx.fillStyle = '#121214';
-    ctx.fillRect(x - 70 * s, y - 20 * s, 22 * s, 22 * s);
-    ctx.fillRect(x + 48 * s, y - 20 * s, 22 * s, 22 * s);
-    const cabin = new Path2D();
-    cabin.moveTo(x - 62 * s, y - 62 * s);
-    cabin.lineTo(x - 52 * s, y - 98 * s);
-    cabin.quadraticCurveTo(x, y - 104 * s, x + 52 * s, y - 98 * s);
-    cabin.lineTo(x + 62 * s, y - 62 * s);
-    cabin.closePath();
-    shade(ctx, cabin, { base: '#6c6a66', shadow: '#3c3a38', light: '#8a8884' }, toward, 2 * s, 6 * s);
-    ctx.fillStyle = '#22262c';
-    ctx.beginPath();
-    ctx.moveTo(x - 52 * s, y - 66 * s);
-    ctx.lineTo(x - 44 * s, y - 92 * s);
-    ctx.quadraticCurveTo(x, y - 97 * s, x + 44 * s, y - 92 * s);
-    ctx.lineTo(x + 52 * s, y - 66 * s);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = 'rgba(160, 170, 190, 0.12)';
-    ctx.beginPath();
-    ctx.moveTo(x - 36 * s, y - 68 * s);
-    ctx.lineTo(x - 18 * s, y - 92 * s);
-    ctx.lineTo(x - 6 * s, y - 92 * s);
-    ctx.lineTo(x - 24 * s, y - 68 * s);
-    ctx.closePath();
-    ctx.fill();
-    // Roof rails.
-    ctx.fillStyle = '#2a2a2c';
-    ctx.fillRect(x - 46 * s, y - 104 * s, 8 * s, 4 * s);
-    ctx.fillRect(x + 38 * s, y - 104 * s, 8 * s, 4 * s);
-    const body = new Path2D();
-    body.moveTo(x - 76 * s, y - 16 * s);
-    body.lineTo(x - 74 * s, y - 56 * s);
-    body.quadraticCurveTo(x - 70 * s, y - 64 * s, x - 60 * s, y - 64 * s);
-    body.lineTo(x + 60 * s, y - 64 * s);
-    body.quadraticCurveTo(x + 70 * s, y - 64 * s, x + 74 * s, y - 56 * s);
-    body.lineTo(x + 76 * s, y - 16 * s);
-    body.closePath();
-    shade(ctx, body, { base: '#77746e', shadow: '#45433f', light: '#9a9790' }, toward, 2 * s, 8 * s);
-    // Bumper, a blank plate and the tail lamps (lit separately).
-    ctx.fillStyle = '#3a3a3c';
-    ctx.fillRect(x - 76 * s, y - 22 * s, 152 * s, 9 * s);
-    ctx.fillStyle = '#c8c8c0';
-    ctx.fillRect(x - 18 * s, y - 44 * s, 36 * s, 11 * s);
-    ctx.fillStyle = '#5c1414';
+    // Tyres under the body, and the side mirrors poking out past the pillars.
+    ctx.fillStyle = '#111113';
     for (const side of [-1, 1]) {
       ctx.beginPath();
-      ctx.moveTo(x + side * 74 * s, y - 56 * s);
-      ctx.lineTo(x + side * 56 * s, y - 54 * s);
-      ctx.lineTo(x + side * 58 * s, y - 42 * s);
-      ctx.lineTo(x + side * 75 * s, y - 40 * s);
-      ctx.closePath();
+      ctx.roundRect(x + side * 63 * s - 12 * s, y - 22 * s, 24 * s, 23 * s, 4 * s);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#4a4742';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(...P(side * 74, -71), 6 * s, 3.4 * s, side * 0.15, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Cabin: pillars in body colour round the rear window, the roof spoiler on top.
+    const cabin = new Path2D();
+    cabin.moveTo(...P(-66, -64));
+    cabin.bezierCurveTo(...P(-62, -84), ...P(-56, -98), ...P(-46, -101));
+    cabin.lineTo(...P(46, -101));
+    cabin.bezierCurveTo(...P(56, -98), ...P(62, -84), ...P(66, -64));
+    cabin.closePath();
+    shade(ctx, cabin, pearl, toward, 2 * s, 6 * s);
+    ctx.fillStyle = '#2a2a2e';
+    ctx.fillRect(...P(-47, -105), 8 * s, 3.5 * s);
+    ctx.fillRect(...P(39, -105), 8 * s, 3.5 * s);
+    const glass = new Path2D();
+    glass.moveTo(...P(-54, -70));
+    glass.bezierCurveTo(...P(-52, -80), ...P(-48, -90), ...P(-42, -93));
+    glass.lineTo(...P(42, -93));
+    glass.bezierCurveTo(...P(48, -90), ...P(52, -80), ...P(54, -70));
+    glass.quadraticCurveTo(...P(0, -67), ...P(-54, -70));
+    glass.closePath();
+    ctx.fillStyle = '#1c2026';
+    ctx.fill(glass);
+    ctx.save();
+    ctx.clip(glass);
+    // The dusk sky in the glass, and a wiper parked at the bottom.
+    ctx.fillStyle = 'rgba(150, 156, 180, 0.16)';
+    ctx.beginPath();
+    ctx.moveTo(...P(-30, -68));
+    ctx.lineTo(...P(-6, -94));
+    ctx.lineTo(...P(10, -94));
+    ctx.lineTo(...P(-14, -68));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = '#0c0c0e';
+    ctx.lineWidth = 1.6 * s;
+    ctx.beginPath();
+    ctx.moveTo(...P(-2, -70));
+    ctx.lineTo(...P(-34, -76));
+    ctx.stroke();
+    // Spoiler over the glass, with the high brake light in it.
+    ctx.fillStyle = '#5e5a54';
+    ctx.beginPath();
+    ctx.moveTo(...P(-46, -101));
+    ctx.lineTo(...P(46, -101));
+    ctx.lineTo(...P(44, -95));
+    ctx.lineTo(...P(-44, -95));
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#4a1414';
+    ctx.fillRect(...P(-12, -99), 24 * s, 2 * s);
+
+    // The tailgate and broad rear haunches.
+    const body = new Path2D();
+    body.moveTo(...P(-76, -24));
+    body.bezierCurveTo(...P(-80, -38), ...P(-79, -54), ...P(-74, -62));
+    body.quadraticCurveTo(...P(-70, -67), ...P(-60, -67));
+    body.lineTo(...P(60, -67));
+    body.quadraticCurveTo(...P(70, -67), ...P(74, -62));
+    body.bezierCurveTo(...P(79, -54), ...P(80, -38), ...P(76, -24));
+    body.closePath();
+    shade(ctx, body, pearl, toward, 2.2 * s, 8 * s);
+    // Pearl paint: a soft sheen running across the shoulders.
+    ctx.save();
+    ctx.clip(body);
+    const sheen = ctx.createLinearGradient(0, y - 67 * s, 0, y - 40 * s);
+    sheen.addColorStop(0, 'rgba(236, 230, 240, 0.28)');
+    sheen.addColorStop(0.35, 'rgba(220, 214, 226, 0.08)');
+    sheen.addColorStop(1, 'rgba(220, 214, 226, 0)');
+    ctx.fillStyle = sheen;
+    ctx.fillRect(x - 80 * s, y - 67 * s, 160 * s, 30 * s);
+    ctx.restore();
+    // Tailgate shut lines.
+    ctx.strokeStyle = 'rgba(30, 28, 26, 0.55)';
+    ctx.lineWidth = 1 * s;
+    ctx.beginPath();
+    ctx.moveTo(...P(-50, -66));
+    ctx.lineTo(...P(-46, -30));
+    ctx.moveTo(...P(50, -66));
+    ctx.lineTo(...P(46, -30));
+    ctx.stroke();
+    for (const side of [-1, 1] as const) {
+      ctx.fillStyle = '#5a1616';
+      ctx.fill(this.tailLamp(side));
+      ctx.strokeStyle = 'rgba(200, 200, 205, 0.35)';
+      ctx.lineWidth = 0.8 * s;
+      ctx.stroke(this.tailLamp(side));
+    }
+    // A chrome garnish across the tailgate with a plain badge, and the recessed plate (left blank).
+    ctx.fillStyle = '#a8a8ac';
+    ctx.fillRect(...P(-34, -53), 68 * s, 3.5 * s);
+    ctx.fillStyle = '#c8c8cc';
+    ctx.beginPath();
+    ctx.ellipse(...P(0, -58), 5 * s, 3.2 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(30, 28, 26, 0.5)';
+    ctx.fillRect(...P(-21, -47), 42 * s, 15 * s);
+    ctx.fillStyle = '#cfcfc8';
+    ctx.fillRect(...P(-17, -45), 34 * s, 10 * s);
+
+    // Black bumper cladding, a silver skid plate, reflectors and twin exhaust tips.
+    const bumper = new Path2D();
+    bumper.moveTo(...P(-77, -28));
+    bumper.lineTo(...P(77, -28));
+    bumper.lineTo(...P(74, -12));
+    bumper.quadraticCurveTo(...P(0, -9), ...P(-74, -12));
+    bumper.closePath();
+    ctx.fillStyle = '#262628';
+    ctx.fill(bumper);
+    ctx.fillStyle = '#8c8c90';
+    ctx.beginPath();
+    ctx.moveTo(...P(-30, -16));
+    ctx.lineTo(...P(30, -16));
+    ctx.lineTo(...P(26, -11));
+    ctx.lineTo(...P(-26, -11));
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#6a1a1a';
+    ctx.fillRect(...P(-68, -24), 9 * s, 3 * s);
+    ctx.fillRect(...P(59, -24), 9 * s, 3 * s);
+    ctx.fillStyle = '#9a9aa0';
+    for (const ex of [-52, -41]) {
+      ctx.beginPath();
+      ctx.ellipse(...P(ex, -11), 4.5 * s, 2.6 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#121214';
+    for (const ex of [-52, -41]) {
+      ctx.beginPath();
+      ctx.ellipse(...P(ex, -11), 3 * s, 1.6 * s, 0, 0, Math.PI * 2);
       ctx.fill();
     }
   }
 
-  /** The tail lamps and indicators, flashing when the car is tapped. */
+  /** A tail lamp: wrapping round the corner and pointing in across the tailgate. */
+  private tailLamp(side: -1 | 1) {
+    const s = this.scale;
+    const P = (px: number, py: number): [number, number] => [this.carX + side * px * s, this.carY + py * s];
+    const p = new Path2D();
+    p.moveTo(...P(76, -60));
+    p.quadraticCurveTo(...P(72, -66), ...P(60, -66));
+    p.lineTo(...P(47, -64));
+    p.quadraticCurveTo(...P(56, -55), ...P(64, -48));
+    p.lineTo(...P(78, -46));
+    p.closePath();
+    return p;
+  }
+
+  /** The tail lamps flashing when the car is tapped — the hazard lights, like checking it's locked. */
   private drawCarLights(ctx: CanvasRenderingContext2D) {
     if (this.blink <= 0) return;
     const on = Math.floor((1.2 - this.blink) / 0.3) % 2 === 0;
     if (!on) return;
     const s = this.scale;
-    for (const side of [-1, 1]) {
-      const lx = this.carX + side * 66 * s;
-      const ly = this.carY - 48 * s;
-      ctx.fillStyle = '#ff5a3a';
-      ctx.beginPath();
-      ctx.moveTo(this.carX + side * 74 * s, ly - 8 * s);
-      ctx.lineTo(this.carX + side * 56 * s, ly - 6 * s);
-      ctx.lineTo(this.carX + side * 58 * s, ly + 6 * s);
-      ctx.lineTo(this.carX + side * 75 * s, ly + 8 * s);
-      ctx.closePath();
-      ctx.fill();
-      glow(ctx, lx, ly, 40 * s, [255, 150, 60], 0.6);
+    for (const side of [-1, 1] as const) {
+      ctx.fillStyle = '#ff6a3a';
+      ctx.fill(this.tailLamp(side));
+      glow(ctx, this.carX + side * 64 * s, this.carY - 57 * s, 42 * s, [255, 150, 60], 0.6);
     }
   }
 

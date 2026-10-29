@@ -4,19 +4,26 @@ import type { FireFrame, FireHost, FireRenderer, FireTap, FireTheme, HotZone, Po
 import { fadeToPage } from './classic';
 
 // A tribute to Grand Theft Auto V: a burn barrel in an empty lot at Los Santos golden hour, under
-// the game's HUD. Feeding the fire is a crime — the wanted stars climb and the sirens close in —
-// and pushing it too far ends the way it always does: wasted, or busted. Everything is drawn
-// here; no artwork from the game is used.
+// the game's HUD. Feeding the fire is a crime — the wanted stars climb, the sirens close in and a
+// helicopter's searchlight starts sweeping the lot. Get caught in it and you're busted; stoke the
+// barrel too hard and you're wasted. Everything is drawn here; no artwork from the game is used.
 
 const MAX_EMBERS = 140;
 const MAX_STARS = 5;
 /** Seconds without a crime before the stars start to fade, and seconds per star lost after that. */
 const EVADE_AFTER = 6;
 const STAR_FADE = 3;
-/** Stoking by hand past this blows the barrel; each tap adds STOKE, which drains at STOKE_DRAIN per second. */
-const BLOW_AT = 2.5;
-const STOKE = 0.45;
-const STOKE_DRAIN = 0.7;
+/**
+ * Stoking by hand past this blows the barrel; each tap adds STOKE, which drains at STOKE_DRAIN per
+ * second — so it takes a few seconds of mashing, not a handful of curious taps.
+ */
+const BLOW_AT = 3;
+const STOKE = 0.35;
+const STOKE_DRAIN = 0.9;
+/** Each tap on the fire is a third of a star; a letter thrown in is a whole one. */
+const TAP_STARS = 1 / 3;
+/** Cash pops shown under the money at once. */
+const MAX_POPS = 3;
 /** Seconds the fire stays out after it blows or the cops put it out. */
 const OUT_FOR = 3.4;
 /** Seconds a banner (mission passed, wasted, busted) stays up. */
@@ -24,13 +31,31 @@ const BANNER_FOR = 3.2;
 /** Letters fed per "mission". */
 const MISSION_EVERY = 4;
 const MISSION_PAY = 5000;
-const LETTER_PAY = 100;
+/** A letter thrown in pays well; kicking the barrel pays a little. */
+const LETTER_PAY = 300;
+const TAP_PAY = 20;
+/** Wanted stars before the helicopter shows up, and how wide its spot is on the ground. */
+const SEARCH_AT = 3;
+const SPOT = 70;
 
 type Banner = 'passed' | 'wasted' | 'busted';
 
 interface CashPop {
   amount: number;
   age: number;
+  /** Row under the cash, eased so the rest slide up when one goes. */
+  slot: number;
+  /** Small takings that pile into one pop instead of a pop each. */
+  stack: boolean;
+}
+
+/** A lit-able window in the skyline, in canvas px, with its noise coordinates. */
+interface SkyWindow {
+  x: number;
+  y: number;
+  col: number;
+  row: number;
+  bright: boolean;
 }
 
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
@@ -85,7 +110,10 @@ function star(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
  */
 class BurnBarrel implements FireRenderer {
   private readonly fire = new TongueFire(7);
+  /** Sky to skyline, then the fence, palms and lot in front — the window lights go between. */
   private readonly backdrop = new Backdrop();
+  private readonly foreground = new Backdrop();
+  private windows: SkyWindow[] = [];
   private embers: Ember[] = [];
 
   private width = 0;
@@ -108,9 +136,15 @@ class BurnBarrel implements FireRenderer {
   private reducedMotion = false;
   private emberDebt = 0;
 
-  /** Wanted level, 0..5; whole stars are shown. */
+  /** Wanted level, 0..5; whole stars are shown, and taps build toward the next one. */
   private wanted = 0;
   private lastCrime = -99;
+  /** Seconds the stars have been blinking while you lie low; one goes every STAR_FADE. */
+  private evading = 0;
+  /** The HUD bars and the police lights, eased so they glide instead of jumping. */
+  private shownHealth = 0;
+  private shownStoke = 0;
+  private alarm = 0;
   private cash = 4250;
   private shownCash = 4250;
   private pops: CashPop[] = [];
@@ -138,7 +172,9 @@ class BurnBarrel implements FireRenderer {
     this.cx = width / 2;
     this.ground = height - 58 * s;
     this.rim = this.ground - 96 * s;
-    this.backdrop.paint(width, height, (ctx) => this.paintScene(ctx));
+    const rand = seeded(17);
+    this.backdrop.paint(width, height, (ctx) => this.paintScene(ctx, rand));
+    this.foreground.paint(width, height, (ctx) => this.paintLot(ctx, rand));
   }
 
   hotZone(): HotZone | null {
@@ -159,8 +195,13 @@ class BurnBarrel implements FireRenderer {
     const bx = clamp(x, this.cx - 30 * this.scale, this.cx + 30 * this.scale);
     for (let i = 0; i < 20; i++) this.burstEmber(bx, this.rim - 10 * this.scale, 0.9);
     this.fire.burst(bx, this.rim - 30 * this.scale, 3);
-    this.crime(1 / 3);
-    if (this.stoke > BLOW_AT) this.explode();
+    if (!this.crime(TAP_STARS)) return;
+    this.earn(TAP_PAY, true);
+    if (this.stoke > BLOW_AT) {
+      // Nothing blows up while "mission passed" is on screen; the meter just sits full.
+      if (this.banner === 'passed') this.stoke = BLOW_AT;
+      else this.explode();
+    }
   }
 
   feed(x: number, y: number, fuel: number) {
@@ -169,13 +210,14 @@ class BurnBarrel implements FireRenderer {
     this.boost = Math.min(this.boost + 0.6 * fuel, 2.6);
     for (let i = 0; i < 36 * fuel; i++) this.burstEmber(x, Math.min(y, this.rim), 1.1);
     this.fire.burst(x, Math.min(y, this.rim - 20 * this.scale), Math.round(5 * fuel));
-    // Arson: a star for every letter thrown in, and a little cash for the trouble.
+    // Arson: a star for every letter thrown in, and good money for the trouble.
     if (!this.crime(1)) return;
     this.earn(LETTER_PAY);
     this.fed++;
-    if (this.fed % MISSION_EVERY === 0 && !this.banner) {
+    if (this.fed % MISSION_EVERY === 0) {
+      // A mission passed while the last banner is still up adds to its payout.
+      this.bannerPay = this.banner === 'passed' ? this.bannerPay + MISSION_PAY : MISSION_PAY;
       this.show('passed');
-      this.bannerPay = MISSION_PAY;
       this.earn(MISSION_PAY);
     }
   }
@@ -203,14 +245,28 @@ class BurnBarrel implements FireRenderer {
     const lit = this.out > 0 ? 0 : 1 - (1 - this.ignition) ** 3;
     this.boost *= Math.exp(-0.5 * dt);
     this.stoke = Math.max(0, this.stoke - STOKE_DRAIN * dt);
+    // Health is the fire itself — lit or not, without the flicker — and the stoke meter glides.
+    this.shownHealth += (lit - this.shownHealth) * Math.min(1, realDt * 4);
+    this.shownStoke += (this.stoke - this.shownStoke) * Math.min(1, realDt * 10);
     this.flicker = 0.85 + 0.2 * noise1(time * 3.1) + 0.08 * noise1(time * 9.7 + 40);
 
-    // Losing the cops: after a quiet spell the stars go one at a time.
-    if (this.wanted > 0 && time - this.lastCrime > EVADE_AFTER) this.wanted = Math.max(0, this.wanted - realDt / STAR_FADE);
+    // Losing the cops: after a quiet spell the stars blink, and go one whole star at a time.
+    if (this.wanted > 0 && time - this.lastCrime > EVADE_AFTER) {
+      this.evading += realDt;
+      if (this.evading >= STAR_FADE) {
+        this.evading -= STAR_FADE;
+        this.wanted = Math.max(0, this.stars() - 1);
+      }
+    } else {
+      this.evading = 0;
+    }
+    const ease = (rate: number) => Math.min(1, realDt * rate);
+    this.alarm += (this.wanted - this.alarm) * ease(3);
 
-    this.shownCash += (this.cash - this.shownCash) * Math.min(1, realDt * 6);
+    this.shownCash += (this.cash - this.shownCash) * ease(6);
     for (const p of this.pops) p.age += realDt;
     this.pops = this.pops.filter((p) => p.age < 2.2);
+    this.pops.forEach((p, i) => (p.slot += (i - p.slot) * ease(10)));
 
     const s = this.scale;
     if (pointer) {
@@ -245,6 +301,7 @@ class BurnBarrel implements FireRenderer {
 
     this.backdrop.draw(ctx);
     this.drawSkylineLights(ctx);
+    this.foreground.draw(ctx);
 
     glow(ctx, this.cx, this.rim - 50 * s, 420 * s, [255, 130, 60], 0.18 * light);
     ctx.save();
@@ -264,17 +321,17 @@ class BurnBarrel implements FireRenderer {
     if (this.banner === 'wasted' || this.banner === 'busted') this.desaturate(ctx);
     fadeToPage(ctx, this.width, this.height);
 
-    this.drawMinimap(ctx, lit);
+    this.drawMinimap(ctx);
     this.drawWanted(ctx);
     this.drawBanner(ctx);
   }
 
   // ---- game ----
 
-  /** A crime raises the wanted level; one more at five stars and the cops close in. Returns false when busted. */
+  /** A crime raises the wanted level — unless it's done in the searchlight. Returns false when busted. */
   private crime(stars: number) {
     if (this.banner === 'wasted' || this.banner === 'busted') return false;
-    if (this.wanted >= MAX_STARS - 0.001) {
+    if (this.spotted()) {
       this.bust();
       return false;
     }
@@ -283,14 +340,40 @@ class BurnBarrel implements FireRenderer {
     return true;
   }
 
-  /** Whole stars shown: any crime at all shows one, and five means the next one gets you busted. */
-  private stars() {
-    return this.wanted <= 0 ? 0 : Math.max(1, Math.floor(this.wanted + 1e-6));
+  /** How strongly the helicopter's searchlight is on, 0..1; it fades in from SEARCH_AT stars. */
+  private searchlight() {
+    if (this.banner === 'wasted' || this.banner === 'busted') return 0;
+    return clamp(this.alarm - (SEARCH_AT - 1), 0, 1);
   }
 
-  private earn(amount: number) {
-    this.cash = Math.max(0, this.cash + amount);
-    this.pops.push({ amount, age: 0 });
+  /** Where the searchlight's spot sweeps across the lot. */
+  private spotX() {
+    return this.cx + Math.sin(this.time * 0.6) * this.width * 0.3;
+  }
+
+  /** The searchlight is on the barrel — a crime now and you're caught red-handed. */
+  private spotted() {
+    return this.searchlight() > 0.5 && Math.abs(this.spotX() - this.cx) < SPOT * this.scale;
+  }
+
+  /** Whole stars shown; taps fill in toward the next one. */
+  private stars() {
+    return Math.floor(this.wanted + 1e-6);
+  }
+
+  private earn(amount: number, stack = false) {
+    const paid = Math.max(-this.cash, Math.round(amount));
+    if (paid === 0) return;
+    this.cash += paid;
+    const last = this.pops[this.pops.length - 1];
+    if (stack && last?.stack && last.age < 1) {
+      last.amount += paid;
+      last.age = 0;
+      return;
+    }
+    this.pops.push({ amount: paid, age: 0, slot: this.pops.length, stack });
+    // Only the latest few; the oldest makes way.
+    if (this.pops.length > MAX_POPS) this.pops.shift();
   }
 
   private show(banner: Banner) {
@@ -309,10 +392,10 @@ class BurnBarrel implements FireRenderer {
     for (let i = 0; i < 90; i++) this.burstEmber(this.cx, this.rim, 1.8);
     this.show('wasted');
     // The hospital bill.
-    this.earn(-Math.min(this.cash, 500));
+    this.earn(-500);
   }
 
-  /** Five stars and still at it: the cops put the fire out. */
+  /** Caught in the searchlight: the cops put the fire out. */
   private bust() {
     this.out = OUT_FOR;
     this.boost = 0;
@@ -320,15 +403,14 @@ class BurnBarrel implements FireRenderer {
     this.wanted = 0;
     if (!this.reducedMotion) this.host.shake(3);
     this.show('busted');
-    this.earn(-Math.min(this.cash, 1000));
+    this.earn(-1000);
   }
 
   // ---- scene ----
 
-  /** Sky, sun, hills with their sign, the skyline, palms, the fence and the lot. Painted once per resize. */
-  private paintScene(ctx: CanvasRenderingContext2D) {
+  /** Sky, sun, hills with their sign and the skyline. Painted once per resize. */
+  private paintScene(ctx: CanvasRenderingContext2D, rand: () => number) {
     const { width: w, height: h, scale: s, ground } = this;
-    const rand = seeded(17);
 
     const sky = ctx.createLinearGradient(0, 0, 0, ground);
     sky.addColorStop(0, '#241640');
@@ -369,6 +451,11 @@ class BurnBarrel implements FireRenderer {
     ctx.fill(ridge(w, near.base, near.amp, near.freq, near.seed, h));
 
     this.paintSkyline(ctx, rand);
+  }
+
+  /** In front of the skyline's lights: the fence, the palms and the lot. Painted once per resize. */
+  private paintLot(ctx: CanvasRenderingContext2D, rand: () => number) {
+    const { width: w, height: h, scale: s, ground } = this;
 
     // Chain-link fence along the back of the lot.
     const fenceTop = ground - 46 * s;
@@ -444,33 +531,38 @@ class BurnBarrel implements FireRenderer {
     const s = this.scale;
     const text = 'CAMPFIRE';
     const size = 17 * s;
-    const step = size * 0.82;
-    const x0 = this.width * 0.16;
+    const gap = size * 0.14;
     ctx.font = `700 ${size}px ui-sans-serif, system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    for (let i = 0; i < text.length; i++) {
-      const x = x0 + i * step;
+    // Spaced by each letter's own width, so a wide M doesn't run into its neighbours.
+    let x = this.width * 0.16;
+    for (const letter of text) {
+      const half = ctx.measureText(letter).width / 2;
+      x += half;
       const y = ridgeY(x, hill.base, hill.amp, hill.freq, hill.seed) + size * 0.9;
       ctx.fillStyle = 'rgba(60, 20, 50, 0.5)';
-      ctx.fillText(text[i], x + 1.5 * s, y + 1.5 * s);
+      ctx.fillText(letter, x + 1.5 * s, y + 1.5 * s);
       ctx.fillStyle = '#fbe6d8';
-      ctx.fillText(text[i], x, y);
+      ctx.fillText(letter, x, y);
+      x += half + gap;
     }
   }
 
-  /** Downtown on the horizon: towers in silhouette, one tall one with a spire. */
+  /** Downtown on the horizon: towers in silhouette, one tall one with a spire; notes where windows fit. */
   private paintSkyline(ctx: CanvasRenderingContext2D, rand: () => number) {
     const { height: h, scale: s, ground } = this;
     const left = this.width * 0.42;
     const right = this.width * 0.86;
     const base = ground - 34 * s;
+    const towers: { x: number; top: number; w: number }[] = [];
     ctx.fillStyle = '#4b2350';
     for (let x = left; x < right; ) {
       const bw = (14 + rand() * 22) * s;
       const centre = 1 - Math.abs((x - (left + right) / 2) / ((right - left) / 2));
       const bh = (30 + rand() * 60 + centre * 110) * s * (h / 700);
       ctx.fillRect(x, base - bh, bw, bh + 40 * s);
+      towers.push({ x, top: base - bh, w: bw });
       if (rand() < 0.3) ctx.fillRect(x + bw * 0.3, base - bh - 8 * s, bw * 0.4, 8 * s);
       x += bw + rand() * 4 * s;
     }
@@ -485,29 +577,40 @@ class BurnBarrel implements FireRenderer {
     ctx.closePath();
     ctx.fill();
     ctx.fillRect(tx - 1, base - th - 46 * s, 2, 26 * s);
+    towers.push({ x: tx - 13 * s, top: base - th, w: 26 * s });
+
+    // Windows on one grid across the whole skyline, kept only where they land on a building.
+    this.windows = [];
+    const cols = Math.floor((right - left) / (6 * s));
+    for (let col = 0; col < cols; col++) {
+      const x = left + col * 6 * s;
+      for (let row = 0; ; row++) {
+        const y = base - (8 + row * 7) * s;
+        const inside = towers.some((t) => x >= t.x + s && x + 2 * s <= t.x + t.w - s && y >= t.top + 3 * s);
+        if (!inside) {
+          if (towers.every((t) => y < t.top)) break;
+          continue;
+        }
+        const n = noise2(col * 0.9, row * 0.9 + 3);
+        if (n >= 0.62) this.windows.push({ x, y, col, row, bright: n > 0.8 });
+      }
+    }
   }
 
   /** Windows lighting up across the skyline as the sun goes, and red lights on the tallest tops. */
   private drawSkylineLights(ctx: CanvasRenderingContext2D) {
     const { scale: s, ground, time } = this;
-    const left = this.width * 0.42;
-    const right = this.width * 0.86;
-    const base = ground - 34 * s;
-    const cols = Math.floor((right - left) / (6 * s));
-    for (let c = 0; c < cols; c++) {
-      for (let r = 0; r < 18; r++) {
-        const n = noise2(c * 0.9, r * 0.9 + 3);
-        if (n < 0.62) continue;
-        const on = noise2(c * 0.7 + time * 0.05, r * 0.7) > 0.45;
-        if (!on) continue;
-        ctx.fillStyle = n > 0.8 ? 'rgba(255, 236, 170, 0.7)' : 'rgba(255, 200, 140, 0.45)';
-        ctx.fillRect(left + c * 6 * s, base - (8 + r * 7) * s, 2 * s, 2.5 * s);
-      }
+    for (const win of this.windows) {
+      if (noise2(win.col * 0.7 + time * 0.05, win.row * 0.7) <= 0.45) continue;
+      ctx.fillStyle = win.bright ? 'rgba(255, 236, 170, 0.7)' : 'rgba(255, 200, 140, 0.45)';
+      ctx.fillRect(win.x, win.y, 2 * s, 2.5 * s);
     }
     if (Math.floor(time * 1.1) % 2 === 0) {
+      const left = this.width * 0.42;
+      const right = this.width * 0.86;
       const tx = left + (right - left) * 0.58;
       const th = 240 * s * (this.height / 700);
-      glow(ctx, tx, base - th - 46 * s, 8 * s, [255, 60, 60], 0.9);
+      glow(ctx, tx, ground - 34 * s - th - 46 * s, 8 * s, [255, 60, 60], 0.9);
     }
   }
 
@@ -573,17 +676,17 @@ class BurnBarrel implements FireRenderer {
 
   /** Three stars and up, a police helicopter's searchlight sweeps the lot. */
   private drawSearchlight(ctx: CanvasRenderingContext2D) {
-    const k = clamp(this.wanted - 2, 0, 1);
-    if (k <= 0 || this.banner === 'wasted' || this.banner === 'busted') return;
+    const k = this.searchlight();
+    if (k <= 0) return;
     const s = this.scale;
-    const gx = this.cx + Math.sin(this.time * 0.6) * this.width * 0.3;
+    const gx = this.spotX();
     const hx = this.cx + Math.sin(this.time * 0.6 - 0.6) * this.width * 0.2;
-    const r = 70 * s;
+    const r = SPOT * s;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     const beam = ctx.createLinearGradient(hx, -20, gx, this.ground);
-    beam.addColorStop(0, `rgba(230, 240, 255, ${(0.02 * k).toFixed(3)})`);
-    beam.addColorStop(1, `rgba(230, 240, 255, ${(0.14 * k).toFixed(3)})`);
+    beam.addColorStop(0, `rgba(230, 240, 255, ${(0.04 * k).toFixed(3)})`);
+    beam.addColorStop(1, `rgba(230, 240, 255, ${(0.22 * k).toFixed(3)})`);
     ctx.fillStyle = beam;
     ctx.beginPath();
     ctx.moveTo(hx - 4 * s, -20);
@@ -594,13 +697,18 @@ class BurnBarrel implements FireRenderer {
     ctx.fill();
     ctx.translate(gx, this.ground);
     ctx.scale(1, 0.25);
-    glow(ctx, 0, 0, r * 1.2, [230, 240, 255], 0.35 * k);
+    glow(ctx, 0, 0, r * 1.2, [230, 240, 255], 0.5 * k);
     ctx.restore();
+    // Caught in it: the barrel lights up white, so it's clear this is no time for a crime.
+    if (this.spotted()) {
+      const mid = (this.rim + this.ground) / 2;
+      glow(ctx, this.cx, mid, 80 * s, [230, 240, 255], 0.55 * k);
+    }
   }
 
   /** Red and blue light washing in from the edges while the cops are after you. */
   private drawSirens(ctx: CanvasRenderingContext2D) {
-    const k = clamp(this.wanted / MAX_STARS, 0, 1);
+    const k = clamp(this.alarm / MAX_STARS, 0, 1);
     if (k <= 0 || this.banner === 'wasted' || this.banner === 'busted') return;
     const phase = Math.floor(this.time * 3) % 2 === 0;
     const reach = this.width * 0.35;
@@ -644,7 +752,7 @@ class BurnBarrel implements FireRenderer {
   // ---- HUD ----
 
   /** Bottom-left: the radar with roads, the sea, blips and police, and the three bars under it. */
-  private drawMinimap(ctx: CanvasRenderingContext2D, lit: number) {
+  private drawMinimap(ctx: CanvasRenderingContext2D) {
     const s = Math.max(this.scale, 0.7);
     const mw = 170 * s;
     const mh = 108 * s;
@@ -738,10 +846,12 @@ class BurnBarrel implements FireRenderer {
     // Health (the fire), armour (how much heat you're dodging) and the stoke meter, which blows when full.
     const by = y + mh + 5 * s;
     const bh = 6 * s;
+    // All three eased, so they glide; the stoke meter turns red, steadily, as it nears blowing.
+    const stoke = clamp(this.shownStoke / BLOW_AT, 0, 1);
     const bars: [number, number, string][] = [
-      [0.5, clamp(lit * this.flicker, 0, 1), '#5fae5a'],
-      [0.25, 1 - this.wanted / MAX_STARS, '#4a98d8'],
-      [0.25, clamp(this.stoke / BLOW_AT, 0, 1), this.stoke / BLOW_AT > 0.75 && Math.floor(this.time * 6) % 2 ? '#ff5a3a' : '#f0c850'],
+      [0.5, clamp(this.shownHealth, 0, 1), '#5fae5a'],
+      [0.25, clamp(1 - this.alarm / MAX_STARS, 0, 1), '#4a98d8'],
+      [0.25, stoke, blend('#f0c850', '#ff5a3a', clamp((stoke - 0.6) / 0.3, 0, 1))],
     ];
     let bx = x;
     for (const [share, value, color] of bars) {
@@ -786,15 +896,15 @@ class BurnBarrel implements FireRenderer {
     ctx.fillStyle = '#e9f6e4';
     ctx.fillText(text, right, cashY);
     ctx.font = `400 ${Math.round(26 * s)}px ${this.font}`;
-    this.pops.forEach((p, i) => {
+    for (const p of this.pops) {
       const a = clamp(2.2 - p.age, 0, 1);
-      const y = cashY + (36 + i * 26) * s - p.age * 6 * s;
+      const y = cashY + (36 + p.slot * 26) * s - p.age * 6 * s;
       const label = `${p.amount < 0 ? '-' : '+'}${money(p.amount)}`;
       ctx.globalAlpha = a;
       ctx.strokeText(label, right, y);
       ctx.fillStyle = p.amount < 0 ? '#e0453a' : '#7bd96b';
       ctx.fillText(label, right, y);
-    });
+    }
     ctx.globalAlpha = 1;
   }
 
